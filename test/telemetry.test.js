@@ -102,10 +102,30 @@ describe('telemetryDisabled', () => {
     process.env = { ...saved };
   });
 
-  it('is off by default', () => {
+  it('is on by default in a production run', () => {
     delete process.env.DO_NOT_TRACK;
     delete process.env.SCRY_TELEMETRY;
+    delete process.env.CI;
+    process.env.NODE_ENV = 'production';
     expect(telemetryDisabled()).toBe(false);
+  });
+
+  // sentry-quota-noise: our own suites and CI jobs fail on purpose and routinely.
+  it('is off under NODE_ENV=test and when CI is set, but not for an explicit false CI', () => {
+    delete process.env.DO_NOT_TRACK;
+    delete process.env.SCRY_TELEMETRY;
+    delete process.env.CI;
+    process.env.NODE_ENV = 'test';
+    expect(telemetryDisabled()).toBe(true);
+    process.env.NODE_ENV = 'production';
+    for (const ci of ['true', '1', 'yes']) {
+      process.env.CI = ci;
+      expect(telemetryDisabled()).toBe(true);
+    }
+    for (const ci of ['', '0', 'false', 'FALSE']) {
+      process.env.CI = ci;
+      expect(telemetryDisabled()).toBe(false);
+    }
   });
 
   it('honours SCRY_TELEMETRY=0', () => {

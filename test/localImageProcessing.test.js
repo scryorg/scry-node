@@ -371,7 +371,7 @@ describe('runLocalImageProcessing', () => {
     const run = (extra, env = {}) => spawnSync(process.execPath, [
       cli, 'upload-images', '--dir', tmpDir, '--project', 'p', '--local',
       '--openai-api-key', 'sk', '--milvus-address', 'https://m.test', '--milvus-token', 't', ...extra,
-    ], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: os.tmpdir(), ...env } });
+    ], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: os.tmpdir(), SCRY_TELEMETRY: '0', ...env } });
 
     beforeEach(() => {
       // No real images: the run fails at "No image files" after key/collection validation, before any network call.

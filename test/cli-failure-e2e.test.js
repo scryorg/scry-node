@@ -55,7 +55,8 @@ function runCli(apiUrl, extra = []) {
       CLI, '--dir', STORYBOOK, '--project', 'e2e', '--deploy-version', 'v1',
       '--api-url', apiUrl, '--api-key', API_KEY, '--no-coverage', ...extra,
     ], {
-      env: { ...process.env, SENTRY_STUB_OUT: stubOut, SCRY_UPLOAD_BACKOFF_MS: '10', SCRY_TELEMETRY: '', DO_NOT_TRACK: '', NO_COLOR: '1', FORCE_COLOR: '0' },
+      // Telemetry is off under tests/CI (sentry-quota-noise); this test reads what the stub received, so run as a customer.
+      env: { ...process.env, SENTRY_STUB_OUT: stubOut, SCRY_UPLOAD_BACKOFF_MS: '10', SCRY_TELEMETRY: '', DO_NOT_TRACK: '', NODE_ENV: 'production', CI: '', NO_COLOR: '1', FORCE_COLOR: '0' },
     });
     let stdout = '';
     let stderr = '';

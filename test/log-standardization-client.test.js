@@ -74,11 +74,12 @@ describe('failed API call', () => {
 });
 
 describe('Sentry', () => {
-  const saved = { DO_NOT_TRACK: process.env.DO_NOT_TRACK, SCRY_TELEMETRY: process.env.SCRY_TELEMETRY, NODE_ENV: process.env.NODE_ENV };
+  const saved = { DO_NOT_TRACK: process.env.DO_NOT_TRACK, SCRY_TELEMETRY: process.env.SCRY_TELEMETRY, NODE_ENV: process.env.NODE_ENV, CI: process.env.CI };
   beforeAll(async () => {
     delete process.env.DO_NOT_TRACK;
     delete process.env.SCRY_TELEMETRY;
     delete process.env.NODE_ENV;
+    delete process.env.CI; // telemetry is off in CI (sentry-quota-noise); this test reads what would be sent
     expect(initTelemetry()).toBe(true);
     captureCliError(new ApiError('Failed to upload file: HTTP 500', 500, REF), { _: ['deploy'], project: 'proj' });
     await flushTelemetry(2000);

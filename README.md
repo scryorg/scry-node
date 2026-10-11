@@ -1073,6 +1073,10 @@ otherwise quote in full.
 
 Nothing is reported on a successful run.
 
+Your own mistakes (a missing or wrong `--dir`, a folder with no images, a missing key or
+env var) print a message and exit 1 but are not reported. Nothing is reported when
+`NODE_ENV=test` or `CI` is set to a true value.
+
 **To opt out**, set either variable:
 
 ```bash
@@ -1080,7 +1084,7 @@ export SCRY_TELEMETRY=0     # Scry-specific
 export DO_NOT_TRACK=1       # respected across many CLI tools
 ```
 
-Both are honoured everywhere, including CI.
+Both are honoured everywhere.
 
 ## 🔧 Troubleshooting the Init Command
 
