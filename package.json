@@ -1,6 +1,6 @@
 {
   "name": "@scrymore/scry-deployer",
-  "version": "0.12.3",
+  "version": "0.12.4",
   "description": "A CLI to automate the deployment of Storybook static builds.",
   "main": "index.js",
   "scripts": {
