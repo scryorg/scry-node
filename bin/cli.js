@@ -9,7 +9,7 @@ const os = require('os');
 const { zipDirectory } = require('../lib/archive.js');
 const { getApiClient, uploadBuild, sanitizeServerText } = require('../lib/apiClient.js');
 const { createLogger } = require('../lib/logger.js');
-const { ApiError } = require('../lib/errors.js');
+const { ApiError, UserInputError } = require('../lib/errors.js');
 const { loadConfig } = require('../lib/config.js');
 const { captureScreenshots } = require('../lib/screencap.js');
 const { analyzeStorybook } = require('../lib/analysis.js');
@@ -651,11 +651,16 @@ async function handleError(error, argv) {
         logger.debug(err.stack);
     }
 
-    // Report with an allowlisted subset of argv. Sending argv wholesale shipped
-    // the customer's --api-key to Sentry on every error.
-    captureCliError(err, argv);
-    // Ensure the event is sent before the process exits
-    try { await flushTelemetry(2000); } catch { /* telemetry must never mask the real error */ }
+    // A user's own mistake (wrong folder, no images, missing env var) is printed above with
+    // how to fix it and exits 1; it is not a defect, so it is not reported (it only spent
+    // error-reporting quota). Everything else is reported.
+    if (!(err instanceof UserInputError)) {
+        // Report with an allowlisted subset of argv. Sending argv wholesale shipped
+        // the customer's --api-key to Sentry on every error.
+        captureCliError(err, argv);
+        // Ensure the event is sent before the process exits
+        try { await flushTelemetry(2000); } catch { /* telemetry must never mask the real error */ }
+    }
 
     process.exit(1);
 }
@@ -775,15 +780,15 @@ async function main() {
 
                 // Validate required fields
                 if (!config.dir) {
-                    throw new Error('--dir is required. You can provide it via CLI arguments, config file, or environment variables.');
+                    throw new UserInputError('--dir is required. You can provide it via CLI arguments, config file, or environment variables.');
                 }
 
                 // Validate directory exists and is valid
                 if (!fs.existsSync(config.dir)) {
-                    throw new Error(`Directory not found at path: ${config.dir}`);
+                    throw new UserInputError(`Directory not found at path: ${config.dir}`);
                 }
                 if (!fs.lstatSync(config.dir).isDirectory()) {
-                    throw new Error(`Path is not a directory: ${config.dir}`);
+                    throw new UserInputError(`Path is not a directory: ${config.dir}`);
                 }
 
                 // Advisory, bounded to 2 s, never fails the deploy.
@@ -1119,14 +1124,14 @@ async function main() {
                 const config = loadConfig(argv);
 
                 if (!config.dir) {
-                    throw new Error('--dir is required. Provide a path to the image directory.');
+                    throw new UserInputError('--dir is required. Provide a path to the image directory.');
                 }
 
                 if (!fs.existsSync(config.dir)) {
-                    throw new Error(`Directory not found: ${config.dir}`);
+                    throw new UserInputError(`Directory not found: ${config.dir}`);
                 }
                 if (!fs.lstatSync(config.dir).isDirectory()) {
-                    throw new Error(`Path is not a directory: ${config.dir}`);
+                    throw new UserInputError(`Path is not a directory: ${config.dir}`);
                 }
 
                 if (config.local) {
@@ -1182,7 +1187,7 @@ function resolveLocalProcessingKeys(config) {
         const envName = env.split(' ')[0];
         resolved[key] = config[key] || process.env[envName] || (key === 'jinaApiKey' ? process.env.JINA_API_KEY : undefined);
         if (!resolved[key]) {
-            throw new Error(`${flag} or ${env} env var is required for local mode`);
+            throw new UserInputError(`${flag} or ${env} env var is required for local mode`);
         }
     }
 

@@ -393,6 +393,8 @@ describe('scry import: telemetry, prompt, terminal and folder rules', () => {
             const saved = { ...process.env };
             delete process.env.DO_NOT_TRACK;
             delete process.env.SCRY_TELEMETRY;
+            delete process.env.CI;
+            process.env.NODE_ENV = 'production'; // telemetry is off under tests/CI (sentry-quota-noise)
             try {
                 require('../lib/telemetry.js').initTelemetry();
             } finally {

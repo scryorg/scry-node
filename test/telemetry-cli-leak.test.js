@@ -33,12 +33,18 @@ const BOGUS_KEY = 'bogus-leak-canary-7f3a9c2e5d1b';
 const OTHER_SECRET = 'bogus-commit-canary-44c1e0';
 
 describe('CLI never sends the API key to Sentry', () => {
-  const saved = { DO_NOT_TRACK: process.env.DO_NOT_TRACK, SCRY_TELEMETRY: process.env.SCRY_TELEMETRY };
+  const saved = {
+    DO_NOT_TRACK: process.env.DO_NOT_TRACK, SCRY_TELEMETRY: process.env.SCRY_TELEMETRY,
+    NODE_ENV: process.env.NODE_ENV, CI: process.env.CI,
+  };
   let logSpy;
 
   beforeAll(async () => {
     delete process.env.DO_NOT_TRACK;
     delete process.env.SCRY_TELEMETRY;
+    // Telemetry is off under tests and CI (sentry-quota-noise); this test needs it on to read what would be sent.
+    delete process.env.CI;
+    process.env.NODE_ENV = 'production';
     logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.spyOn(console, 'error').mockImplementation(() => {});
     jest.spyOn(console, 'warn').mockImplementation(() => {});

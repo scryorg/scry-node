@@ -32,6 +32,8 @@ describe('integration: cli deploy flow (no network)', () => {
           ...process.env,
           STORYBOOK_DEPLOYER_API_URL: 'https://example.invalid',
           STORYBOOK_DEPLOYER_API_KEY: 'any',
+          // The mock server error here is deliberate; it must never reach error reporting.
+          SCRY_TELEMETRY: '0',
         },
       }
     );
