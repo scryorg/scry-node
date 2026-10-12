@@ -4,7 +4,11 @@
 // options:
 //   manifest  'ok' | 'disabled' (503 delta_disabled) | 'notfound' (404) | 'forbidden' (403) | 'bad400' (400 unsupported_protocol)
 //             | 'broken' (500 every time) | 'refuse-object' (the first object carries error.code)
+//             | 'attach-refused' (409 build_not_attachable: the buildId in the request cannot take a delta)
 //   commit    'verify' (default: 409 missing_blobs unless every oid is held or was PUT) | 'forbidden' (403) | 'always409' | 'down' (500)
+//             | 'invalid-picture' (422 invalid_picture, count 1)
+// The manifest answer attaches to the buildId the request names (the real service does), else opens the fixture's build.
+// POST /upload/{project}/{version}/metadata/failed is recorded on `failedMarks` and answered 200.
 //   held      Set of oids the project already holds (no actions.upload for those)
 //   direct    true = answer with direct-to-storage links on a second origin, when the request lists r2-presigned
 //   putFail   { count, status } = the first `count` PUTs answer `status`
@@ -32,6 +36,7 @@ async function startDeltaStub({ manifest = 'ok', commit = 'verify', held = new S
   const requests = []; // every request the API origin saw
   const storageRequests = []; // every request the "R2" origin saw
   const received = new Set();
+  const failedMarks = []; // bodies of POST .../metadata/failed
   let putFailures = 0;
   let api;
   let storage;
@@ -74,14 +79,21 @@ async function startDeltaStub({ manifest = 'ok', commit = 'verify', held = new S
     requests.push(entry);
     const apiUrl = `http://127.0.0.1:${api.address().port}`;
 
+    if (req.method === 'POST' && /\/metadata\/failed$/.test(url.pathname)) {
+      failedMarks.push(entry.json);
+      return json(res, 200, { success: true, buildNumber: 1 });
+    }
+
     if (req.method === 'POST' && /^\/delta\/[^/]+\/manifest$/.test(url.pathname)) {
+      if (manifest === 'attach-refused') return json(res, 409, readFixture('manifest-response-attach-refused.json'));
       if (manifest === 'disabled') return json(res, 503, { error: 'delta_disabled', message: 'switched off' });
       if (manifest === 'notfound') return json(res, 404, { error: 'not found' });
       if (manifest === 'forbidden') return json(res, 403, { error: 'wrong_project', message: 'key of another project' });
       if (manifest === 'bad400') return json(res, 400, { error: 'unsupported_protocol', message: 'use the zip path' });
       if (manifest === 'broken') return json(res, 500, { error: 'internal_error' });
       const useDirect = direct && Array.isArray(entry.json?.transfers) && entry.json.transfers.includes('r2-presigned');
-      const answer = readFixture(useDirect ? 'manifest-response-r2.json' : 'manifest-response-basic.json');
+      const fixtureAnswer = readFixture(useDirect ? 'manifest-response-r2.json' : 'manifest-response-basic.json');
+      const answer = { ...fixtureAnswer, buildId: entry.json?.buildId || fixtureAnswer.buildId };
       const objects = objectsOf(answer).map((o) => {
         const base = { oid: o.oid, size: o.size };
         if (manifest === 'refuse-object' && o === answer.objects[0]) return { ...base, error: { code: 'too_large', message: 'over 20 MiB' } };
@@ -105,9 +117,10 @@ async function startDeltaStub({ manifest = 'ok', commit = 'verify', held = new S
     if (req.method === 'POST' && /^\/delta\/[^/]+\/builds\/[^/]+\/commit$/.test(url.pathname)) {
       if (commit === 'forbidden') return json(res, 403, { error: 'wrong_project', message: 'not your build' });
       if (commit === 'down') return json(res, 500, { error: 'internal_error' });
+      if (commit === 'invalid-picture') return json(res, 422, readFixture('commit-422.json'));
       const all = readFixture('manifest-request.json');
       const missing = Object.values(all.images).map((i) => i.oid).filter((oid) => !held.has(oid) && !received.has(oid));
-      if (commit === 'always409' || missing.length) return json(res, 409, { ...readFixture('commit-409.json'), missing: missing.length ? missing : readFixture('commit-409.json').missing });
+      if (commit === 'always409' || missing.length) return json(res, 409, { ...readFixture('commit-409.json'), ...(missing.length ? { count: missing.length, missing } : {}) });
       return json(res, 202, readFixture('commit-response.json'));
     }
     return json(res, 404, { error: 'not found (stub)' });
@@ -119,6 +132,7 @@ async function startDeltaStub({ manifest = 'ok', commit = 'verify', held = new S
     requests,
     storageRequests,
     received,
+    failedMarks,
     puts: () => requests.filter((r) => r.method === 'PUT'),
     close: () => Promise.all([api, storage].map((s) => new Promise((r) => { s.close(r); s.closeAllConnections?.(); }))),
   };

@@ -75,16 +75,19 @@ function fixturePictures() {
  * Write a delta bundle the way sbcov does: `delta-manifest.json` and `delta-files/<manifest path>`
  * beside the metadata ZIP. Returns where the metadata ZIP would be.
  */
+/** What sbcov writes: the fixture request without what only the deployer adds (`transfers`, the build id, the provenance). */
+function sbcovManifest() {
+  const m = readFixture('manifest-request.json');
+  for (const key of ['transfers', 'buildId', 'commitSha', 'branch']) delete m[key];
+  return m;
+}
+
 function writeBundle(dir, { manifest = null, pictures = fixturePictures(), omit = [] } = {}) {
   const zipPath = path.join(dir, 'scry-metadata-test.zip');
   const root = path.join(dir, 'delta-files');
   fs.mkdirSync(root, { recursive: true });
   fs.writeFileSync(zipPath, 'not a real zip: the delta path never opens it');
-  const body = manifest || (() => {
-    const m = readFixture('manifest-request.json');
-    delete m.transfers; // sbcov writes the manifest; the deployer adds `transfers`
-    return m;
-  })();
+  const body = manifest || sbcovManifest();
   fs.writeFileSync(path.join(dir, 'delta-manifest.json'), JSON.stringify(body));
   for (const [name, bytes] of Object.entries(pictures)) {
     if (omit.includes(name)) continue;
@@ -94,4 +97,4 @@ function writeBundle(dir, { manifest = null, pictures = fixturePictures(), omit 
   return { zipPath, root };
 }
 
-module.exports = { FIXTURE_DIR, png, fakePng, sha256, readFixture, fixturePictures, writeBundle };
+module.exports = { sbcovManifest, FIXTURE_DIR, png, fakePng, sha256, readFixture, fixturePictures, writeBundle };

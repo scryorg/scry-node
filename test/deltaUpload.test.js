@@ -6,11 +6,15 @@ const path = require('path');
 const { getApiClient, uploadMetadataDelta } = require('../lib/apiClient.js');
 const { PUT_CONCURRENCY, removeDeltaBundle, locateDeltaBundle } = require('../lib/deltaUpload.js');
 const { startDeltaStub } = require('./helpers/deltaStub.js');
-const { readFixture, fixturePictures, png, sha256, writeBundle } = require('./helpers/deltaFixtures.js');
+const { readFixture, fixturePictures, png, sha256, writeBundle, sbcovManifest } = require('./helpers/deltaFixtures.js');
 
 const API_KEY = 'test-key-not-a-credential';
 const TARGET = { project: 'fixture', version: 'pr-12-abc1234' };
-const oids = Object.values(readFixture('manifest-request.json').images).map((i) => i.oid);
+const manifestFixture = readFixture('manifest-request.json');
+const oids = Object.values(manifestFixture.images).map((i) => i.oid);
+// The build the storybook.zip upload created and the provenance the metadata-ZIP path sends: the fixture's own.
+const GIT = { commitSha: manifestFixture.commitSha, branch: manifestFixture.branch };
+const KNOWN = { buildId: manifestFixture.buildId };
 
 function capture() {
   const lines = [];
@@ -40,7 +44,7 @@ describe('delta upload (manifest-first)', () => {
     const { zipPath } = writeBundle(dir);
     const cap = capture();
     const client = getApiClient(url || stub.url, API_KEY);
-    const outcome = await uploadMetadataDelta(client, TARGET, zipPath, cap.log);
+    const outcome = await uploadMetadataDelta(client, TARGET, zipPath, cap.log, GIT, KNOWN);
     return { outcome, cap, zipPath };
   };
 
@@ -53,10 +57,52 @@ describe('delta upload (manifest-first)', () => {
     const { outcome } = await run();
     expect(outcome.handled).toBe(true);
     const sent = stub.requests.find((r) => r.path === '/delta/fixture/manifest');
-    expect(sent.json).toEqual(manifest); // protocol 1, sha256, version, source, scf, images, transfers
+    expect(sent.json).toEqual(manifest); // protocol 1, sha256, version, source, scf, images, buildId, commitSha, branch, transfers
     expect(sent.json.transfers).toEqual(['r2-presigned', 'basic']);
     expect(sent.headers['idempotency-key']).toMatch(/^[A-Za-z0-9_-]{8,128}$/);
     expect(sent.headers['x-api-key']).toBe(API_KEY);
+  });
+
+  test('F42: the manifest names the storybook.zip build and carries the same git provenance as the metadata-ZIP path', async () => {
+    await run();
+    const sent = stub.requests.find((r) => r.path === '/delta/fixture/manifest').json;
+    expect(sent.buildId).toBe('build_A_1');
+    expect(sent.commitSha).toBe(GIT.commitSha);
+    expect(sent.branch).toBe(GIT.branch);
+  });
+
+  test('F42: provenance members that are not known are left out of the body, not sent empty', async () => {
+    stub = await startDeltaStub();
+    const { zipPath } = writeBundle(dir);
+    await uploadMetadataDelta(getApiClient(stub.url, API_KEY), TARGET, zipPath, capture().log, { branch: 'main' }, KNOWN);
+    const sent = stub.requests.find((r) => r.path === '/delta/fixture/manifest').json;
+    expect(sent.branch).toBe('main');
+    expect(sent).not.toHaveProperty('commitSha');
+  });
+
+  test('F42: the delta commits to the build it attached to, so one deploy is one build', async () => {
+    const { outcome } = await run({ held: new Set(oids) }, null);
+    expect(outcome.result).toMatchObject({ success: true, buildId: 'build_A_1' });
+    expect(stub.requests.filter((r) => r.path.endsWith('/commit')).map((r) => r.path)).toEqual(['/delta/fixture/builds/build_A_1/commit']);
+  });
+
+  test('F42: no build id from the storybook.zip upload -> the ZIP, with a one-line reason, and never a second build', async () => {
+    stub = await startDeltaStub();
+    const { zipPath } = writeBundle(dir);
+    const outcome = await uploadMetadataDelta(getApiClient(stub.url, API_KEY), TARGET, zipPath, capture().log, GIT, {});
+    expect(outcome.handled).toBe(false);
+    expect(outcome.reason).toMatch(/no build id/);
+    expect(outcome.reason).not.toContain('\n');
+    expect(stub.requests).toHaveLength(0);
+  });
+
+  test('F42: 409 build_not_attachable on the manifest -> the metadata ZIP for the same build (nothing committed, no PUT)', async () => {
+    const { outcome } = await run({ manifest: 'attach-refused' });
+    expect(outcome.handled).toBe(false);
+    expect(outcome.reason).toMatch(/build_not_attachable/);
+    expect(outcome.reason).not.toContain('\n');
+    expect(stub.requests.map((r) => `${r.method} ${r.path}`)).toEqual(['POST /delta/fixture/manifest']);
+    expect(stub.failedMarks).toHaveLength(0); // the build is still going to be used by the ZIP
   });
 
   test('row 11: nothing changed -> 0 PUTs, the build is committed', async () => {
@@ -115,6 +161,9 @@ describe('delta upload (manifest-first)', () => {
     expect(outcome.result.error).toMatch(/3 pictures never arrived \(missing_blobs\)/);
     expect(outcome.result.requestId).toBe('req-stub-delta-0001');
     expect(cap.lines.some((l) => l.startsWith('error: Delta upload failed'))).toBe(true);
+    // P2-1: the storybook.zip build is marked failed exactly as the ZIP path does it.
+    expect(outcome.result).toMatchObject({ markedFailed: true, buildId: 'build_A_1' });
+    expect(stub.failedMarks).toEqual([{ buildId: 'build_A_1', reason: expect.stringMatching(/missing_blobs/) }]);
     expect(cap.lines.join('\n')).not.toContain(oids[0]); // a picture hash is never printed
   });
 
@@ -123,6 +172,17 @@ describe('delta upload (manifest-first)', () => {
     expect(outcome.handled).toBe(true);
     expect(outcome.result).toMatchObject({ success: false, requestId: 'req-stub-delta-0001' });
     expect(outcome.result.error).toMatch(/HTTP 403/);
+    expect(outcome.result).toMatchObject({ markedFailed: true, buildId: 'build_A_1' });
+  });
+
+  test('F42: commit 422 invalid_picture -> failed result with the request id and the count, build marked failed, no ZIP behind it', async () => {
+    const { outcome, cap } = await run({ commit: 'invalid-picture' });
+    expect(outcome.handled).toBe(true);
+    expect(outcome.result).toMatchObject({ success: false, requestId: 'req-stub-delta-0001', markedFailed: true, buildId: 'build_A_1' });
+    expect(outcome.result.error).toMatch(/1 picture/);
+    expect(outcome.result.error).toMatch(/invalid_picture/);
+    expect(stub.failedMarks).toEqual([{ buildId: 'build_A_1', reason: expect.stringMatching(/invalid_picture/) }]);
+    expect(cap.lines.some((l) => l.startsWith('error: Delta upload failed'))).toBe(true);
   });
 
   test('a commit that cannot be reached is not reported green and not retried as a ZIP', async () => {
@@ -134,7 +194,7 @@ describe('delta upload (manifest-first)', () => {
   test('the manifest refusing the key (403) fails the deploy instead of hiding it behind the ZIP path', async () => {
     const { outcome } = await run({ manifest: 'forbidden' });
     expect(outcome.handled).toBe(true);
-    expect(outcome.result).toMatchObject({ success: false, requestId: 'req-stub-delta-0001' });
+    expect(outcome.result).toMatchObject({ success: false, requestId: 'req-stub-delta-0001', markedFailed: true, buildId: 'build_A_1' });
   });
 
   describe('row 13: each fallback trigger -> the ZIP path (handled: false, one-line reason, no commit)', () => {
@@ -159,7 +219,7 @@ describe('delta upload (manifest-first)', () => {
       await stub.close();
       stub = null;
       const { zipPath } = writeBundle(dir);
-      const outcome = await uploadMetadataDelta(getApiClient(deadUrl, API_KEY), TARGET, zipPath, capture().log);
+      const outcome = await uploadMetadataDelta(getApiClient(deadUrl, API_KEY), TARGET, zipPath, capture().log, GIT, KNOWN);
       expect(outcome.handled).toBe(false);
       expect(outcome.reason).toMatch(/ECONNREFUSED/);
     });
@@ -175,7 +235,7 @@ describe('delta upload (manifest-first)', () => {
       stub = await startDeltaStub();
       const zipPath = path.join(dir, 'scry-metadata-none.zip');
       fs.writeFileSync(zipPath, 'zip');
-      const outcome = await uploadMetadataDelta(getApiClient(stub.url, API_KEY), TARGET, zipPath, capture().log);
+      const outcome = await uploadMetadataDelta(getApiClient(stub.url, API_KEY), TARGET, zipPath, capture().log, GIT, KNOWN);
       expect(outcome).toEqual({ handled: false, reason: 'sbcov wrote no delta manifest' });
       expect(stub.requests).toHaveLength(0);
     });
@@ -185,7 +245,7 @@ describe('delta upload (manifest-first)', () => {
       const pictures = fixturePictures();
       pictures['images/pic-3.png'] = png(201); // same name, other bytes
       const { zipPath } = writeBundle(dir, { pictures });
-      const outcome = await uploadMetadataDelta(getApiClient(stub.url, API_KEY), TARGET, zipPath, capture().log);
+      const outcome = await uploadMetadataDelta(getApiClient(stub.url, API_KEY), TARGET, zipPath, capture().log, GIT, KNOWN);
       expect(outcome.handled).toBe(false);
       expect(outcome.reason).toMatch(/does not match its delta manifest/);
       expect(stub.requests).toHaveLength(0);
@@ -194,13 +254,12 @@ describe('delta upload (manifest-first)', () => {
     test('a picture missing on disk, or a manifest path that escapes the bundle -> ZIP', async () => {
       stub = await startDeltaStub();
       const { zipPath } = writeBundle(dir, { omit: ['images/pic-3.png'] });
-      let outcome = await uploadMetadataDelta(getApiClient(stub.url, API_KEY), TARGET, zipPath, capture().log);
+      let outcome = await uploadMetadataDelta(getApiClient(stub.url, API_KEY), TARGET, zipPath, capture().log, GIT, KNOWN);
       expect(outcome.reason).toMatch(/missing on disk/);
-      const escaping = readFixture('manifest-request.json');
+      const escaping = sbcovManifest();
       escaping.images = { '../../etc/passwd': Object.values(escaping.images)[0] };
-      delete escaping.transfers;
       const second = writeBundle(fs.mkdtempSync(path.join(dir, 'x-')), { manifest: escaping });
-      outcome = await uploadMetadataDelta(getApiClient(stub.url, API_KEY), TARGET, second.zipPath, capture().log);
+      outcome = await uploadMetadataDelta(getApiClient(stub.url, API_KEY), TARGET, second.zipPath, capture().log, GIT, KNOWN);
       expect(outcome.reason).toMatch(/outside its bundle/);
       expect(stub.requests).toHaveLength(0);
     });
@@ -215,11 +274,22 @@ describe('delta upload (manifest-first)', () => {
     body.objects = body.objects.map((o) => ({ ...o, actions: { upload: { ...o.actions.upload, href: 'http://uploads.example.test/blob?sig=secret' } } }));
     const client = getApiClient(stub.url, API_KEY);
     jest.spyOn(client, 'post').mockResolvedValue({ status: 201, data: body });
-    const outcome = await uploadMetadataDelta(client, TARGET, zipPath, capture().log);
+    const outcome = await uploadMetadataDelta(client, TARGET, zipPath, capture().log, GIT, KNOWN);
     expect(outcome.handled).toBe(false);
     expect(outcome.reason).toMatch(/non-https upload address on another host/);
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+
+  test('F42: an upload service that opens a different build than the one named (it ignores buildId) -> the ZIP, never a second build', async () => {
+    stub = await startDeltaStub();
+    const { zipPath } = writeBundle(dir);
+    const client = getApiClient(stub.url, API_KEY);
+    jest.spyOn(client, 'post').mockResolvedValue({ status: 201, data: { ...readFixture('manifest-response-basic.json'), buildId: 'build_other_9' } });
+    const outcome = await uploadMetadataDelta(client, TARGET, zipPath, capture().log, GIT, KNOWN);
+    expect(outcome.handled).toBe(false);
+    expect(outcome.reason).toMatch(/different build/);
+    expect(stub.requests).toHaveLength(0); // nothing was PUT or committed
   });
 
   test('at most 8 picture PUTs are in flight at once', async () => {
@@ -262,7 +332,7 @@ describe('delta upload (manifest-first)', () => {
       const old = new Date(Date.now() - 60_000);
       fs.utimesSync(path.join(dir, 'delta-manifest.json'), old, old);
       stub = await startDeltaStub();
-      const r = await uploadMetadataDelta(getApiClient(stub.url, API_KEY), TARGET, zipPath, capture().log);
+      const r = await uploadMetadataDelta(getApiClient(stub.url, API_KEY), TARGET, zipPath, capture().log, GIT, KNOWN);
       expect(stub.requests).toHaveLength(0);
       expect(r).toEqual({ handled: false, reason: 'the delta manifest is older than the metadata ZIP' });
     } finally {

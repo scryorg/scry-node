@@ -531,12 +531,7 @@ function reportMetadataUploadFailed(metadataUpload, uploadResult, logger) {
     const buildNumberSuffix = zip.buildNumber !== undefined ? ` (#${zip.buildNumber})` : '';
     const build = zip.buildId ? `Build ${zip.buildId}${buildNumberSuffix}` : 'The build';
     let outcome;
-    if (metadataUpload.delta) {
-        // The delta build is its own build on the upload service and was never queued; it closes by
-        // itself after an hour. Nothing was marked failed, and nothing was indexed.
-        outcome = '   The pictures were not queued for indexing (the unfinished upload closes by itself).\n' +
-            '   Re-run this job to index it.';
-    } else if (metadataUpload.markedFailed) {
+    if (metadataUpload.markedFailed) {
         outcome = `   ${build} is marked failed on the upload service. Re-run this job to index it.`;
     } else if (metadataUpload.markFailedUnsupported) {
         outcome = `   ${build} is left pending: the upload service has no way to mark it failed,\n` +

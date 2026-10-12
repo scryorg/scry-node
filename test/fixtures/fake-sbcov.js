@@ -113,13 +113,11 @@ function report({ passed, failures }) {
 
 // sbcov with --delta-manifest: delta-manifest.json + delta-files/images/* beside the ZIP (the shared fixture's pictures).
 function writeDeltaBundle() {
-  const { fixturePictures, readFixture } = require('../helpers/deltaFixtures.js');
+  const { fixturePictures, sbcovManifest } = require('../helpers/deltaFixtures.js');
   const dir = path.dirname(outputZip);
   const root = path.join(dir, 'delta-files');
   fs.mkdirSync(path.join(root, 'images'), { recursive: true });
-  const manifest = readFixture('manifest-request.json');
-  delete manifest.transfers;
-  fs.writeFileSync(path.join(dir, 'delta-manifest.json'), JSON.stringify(manifest));
+  fs.writeFileSync(path.join(dir, 'delta-manifest.json'), JSON.stringify(sbcovManifest()));
   for (const [name, bytes] of Object.entries(fixturePictures())) fs.writeFileSync(path.join(root, name), bytes);
 }
 
