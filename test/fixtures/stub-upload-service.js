@@ -32,11 +32,24 @@
 // metadata archive was sent at all.
 const http = require('http');
 
-function startStub({ port = 0, metadata = 'ok', ciTimings = 'ok', actionsApi = 'ok', metadataRate = 0, presign = 'none', metadataPut = 'ok', metadataComplete = 'ok', log = () => {} } = {}) {
+// --delegate <url>: every /delta/* request is forwarded to that origin (test/helpers/deltaStub.js), so a
+// CLI run sees the storybook.zip and metadata routes here and the delta routes there.
+
+function startStub({ port = 0, metadata = 'ok', ciTimings = 'ok', actionsApi = 'ok', metadataRate = 0, presign = 'none', metadataPut = 'ok', metadataComplete = 'ok', log = () => {} , delegate = null } = {}) {
   const requests = [];
   const failed = [];
   let metadataCalls = 0;
   const server = http.createServer((req, res) => {
+    if (delegate && req.url.startsWith('/delta/')) {
+      requests.push({ method: req.method, path: req.url.split('?')[0], query: req.url.split('?')[1] || '', bytes: 0, delegated: true });
+      const forward = http.request(`${delegate}${req.url}`, { method: req.method, headers: req.headers }, (back) => {
+        res.writeHead(back.statusCode, back.headers);
+        back.pipe(res);
+      });
+      forward.on('error', () => { res.writeHead(502); res.end(); });
+      req.pipe(forward);
+      return;
+    }
     const chunks = [];
     const started = Date.now();
     const throttle = metadataRate > 0 && req.method === 'POST' && /\/metadata(\?|$)/.test(req.url);

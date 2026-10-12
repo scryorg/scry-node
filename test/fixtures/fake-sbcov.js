@@ -41,6 +41,7 @@ const EXECUTE_MS = Number(process.env.FAKE_SBCOV_EXECUTE_MS || 1200);
 if (argv.includes('--help')) {
   console.log('Usage: scry-sbcov [options]\n  --output <path>\n  --output-zip <path>\n  --screenshots' +
     (OLD ? '' : '\n  --max-dropped <n>  exit 3 when more stories than this are dropped') +
+    (process.env.FAKE_SBCOV_DELTA === '1' ? '\n  --delta-manifest  also write the delta bundle beside the metadata ZIP' : '') +
     (EXECUTION ? '\n  --concurrency <n>  stories rendered at once\n  --render-timeout <ms>  how long a story may take to show something' : ''));
   process.exit(0);
 }
@@ -110,6 +111,16 @@ function report({ passed, failures }) {
   };
 }
 
+// sbcov with --delta-manifest: delta-manifest.json + delta-files/images/* beside the ZIP (the shared fixture's pictures).
+function writeDeltaBundle() {
+  const { fixturePictures, sbcovManifest } = require('../helpers/deltaFixtures.js');
+  const dir = path.dirname(outputZip);
+  const root = path.join(dir, 'delta-files');
+  fs.mkdirSync(path.join(root, 'images'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'delta-manifest.json'), JSON.stringify(sbcovManifest()));
+  for (const [name, bytes] of Object.entries(fixturePictures())) fs.writeFileSync(path.join(root, name), bytes);
+}
+
 function writeZip(entries, dropped = []) {
   return new Promise((resolve, reject) => {
     const out = fs.createWriteStream(outputZip);
@@ -143,6 +154,7 @@ async function main() {
     case 'ok':
       fs.writeFileSync(output, JSON.stringify(report({ passed: STORIES, failures: [] })));
       if (outputZip) await writeZip(STORIES);
+      if (outputZip && argv.includes('--delta-manifest')) writeDeltaBundle();
       return 0;
     case 'empty':
       fs.writeFileSync(output, JSON.stringify(report({ passed: [], failures: STORIES })));
