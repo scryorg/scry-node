@@ -197,6 +197,42 @@ describe('delta upload (manifest-first)', () => {
     expect(outcome.result).toMatchObject({ success: false, requestId: 'req-stub-delta-0001', markedFailed: true, buildId: 'build_A_1' });
   });
 
+  describe('F64: a redirect from the API origin never carries X-API-Key to another host', () => {
+    const http = require('http');
+    let sink;
+    let sinkHits;
+    beforeEach(async () => {
+      sinkHits = [];
+      sink = http.createServer((req, res) => {
+        sinkHits.push({ method: req.method, url: req.url, key: req.headers['x-api-key'] });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end('{}');
+      });
+      // 127.0.0.2 is a different host name from the stub's 127.0.0.1, so follow-redirects would see a cross-host hop
+      await new Promise((resolve) => sink.listen(0, '127.0.0.2', resolve));
+    });
+    afterEach(async () => {
+      await new Promise((resolve) => { sink.close(resolve); sink.closeAllConnections?.(); });
+    });
+    const sinkUrl = (p) => `http://127.0.0.2:${sink.address().port}${p}`;
+
+    test('302 on the manifest call: the other host sees nothing, and the run falls back to the ZIP path like any delta failure', async () => {
+      const { outcome } = await run({ redirect: { route: 'manifest', to: sinkUrl('/steal') } });
+      expect(sinkHits).toEqual([]);
+      expect(outcome.handled).toBe(false);
+      expect(outcome.reason).toMatch(/delta manifest request failed/);
+      expect(outcome.reason).not.toContain('\n');
+      expect(stub.requests.map((r) => `${r.method} ${r.path}`)).toEqual(['POST /delta/fixture/manifest']); // one attempt: 302 is not retried
+    });
+
+    test('302 on the commit call: the other host sees nothing, and the result is a failure (never green, never a ZIP behind it)', async () => {
+      const { outcome } = await run({ held: new Set(oids), redirect: { route: 'commit', to: sinkUrl('/steal') } });
+      expect(sinkHits).toEqual([]);
+      expect(outcome.handled).toBe(true);
+      expect(outcome.result.success).toBe(false);
+    });
+  });
+
   describe('row 13: each fallback trigger -> the ZIP path (handled: false, one-line reason, no commit)', () => {
     test.each([
       ['503 delta_disabled', { manifest: 'disabled' }, /delta_disabled/],

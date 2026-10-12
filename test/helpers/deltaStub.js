@@ -13,6 +13,7 @@
 //   direct    true = answer with direct-to-storage links on a second origin, when the request lists r2-presigned
 //   putFail   { count, status } = the first `count` PUTs answer `status`
 //   swallowPuts true = answer 201 to every PUT but keep nothing (the commit check must then say missing_blobs)
+//   redirect  { route: 'manifest' | 'commit', to: url } = that route answers 302 with `Location: to` (a cross-host redirect, F64)
 //   wrongOid  true = answer the PUT of the first object with 422 (hash_mismatch)
 const http = require('http');
 const { readFixture, sha256 } = require('./deltaFixtures.js');
@@ -32,7 +33,7 @@ function readBody(req) {
   });
 }
 
-async function startDeltaStub({ manifest = 'ok', commit = 'verify', held = new Set(), direct = false, putFail = null, wrongOid = false, swallowPuts = false } = {}) {
+async function startDeltaStub({ manifest = 'ok', commit = 'verify', held = new Set(), direct = false, putFail = null, wrongOid = false, swallowPuts = false, redirect = null } = {}) {
   const requests = []; // every request the API origin saw
   const storageRequests = []; // every request the "R2" origin saw
   const received = new Set();
@@ -82,6 +83,11 @@ async function startDeltaStub({ manifest = 'ok', commit = 'verify', held = new S
     if (req.method === 'POST' && /\/metadata\/failed$/.test(url.pathname)) {
       failedMarks.push(entry.json);
       return json(res, 200, { success: true, buildNumber: 1 });
+    }
+
+    if (redirect && req.method === 'POST' && new RegExp(`/${redirect.route}$`).test(url.pathname)) {
+      res.writeHead(302, { Location: redirect.to });
+      return res.end();
     }
 
     if (req.method === 'POST' && /^\/delta\/[^/]+\/manifest$/.test(url.pathname)) {
