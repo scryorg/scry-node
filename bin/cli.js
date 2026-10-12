@@ -8,6 +8,7 @@ const path = require('path');
 const os = require('os');
 const { zipDirectory } = require('../lib/archive.js');
 const { getApiClient, uploadBuild, sanitizeServerText } = require('../lib/apiClient.js');
+const { removeDeltaBundle } = require('../lib/deltaUpload.js');
 const { createLogger } = require('../lib/logger.js');
 const { ApiError, UserInputError } = require('../lib/errors.js');
 const { loadConfig } = require('../lib/config.js');
@@ -482,6 +483,15 @@ async function runDeployment(argv) {
         // uploads the metadata ZIP (legacy path, unchanged keys), so the sibling is only removed.
         const scfSibling = metadataZipPath ? metadataZipPath.replace(/\.zip$/i, '') + '.scf.zip' : null;
         if (scfSibling && fs.existsSync(scfSibling)) fs.unlinkSync(scfSibling);
+        // The delta bundle (manifest + picture copies) sbcov wrote for the manifest-first upload.
+        if (metadataZipPath) {
+            removeDeltaBundle(metadataZipPath);
+            // The ZIP lives in a private directory of its own (see runCoverage); drop it once empty.
+            const zipDir = path.dirname(metadataZipPath);
+            if (path.basename(zipDir).startsWith('scry-metadata-')) {
+                try { fs.rmdirSync(zipDir); } catch { /* not empty or already gone */ }
+            }
+        }
     }
 }
 
@@ -521,7 +531,12 @@ function reportMetadataUploadFailed(metadataUpload, uploadResult, logger) {
     const buildNumberSuffix = zip.buildNumber !== undefined ? ` (#${zip.buildNumber})` : '';
     const build = zip.buildId ? `Build ${zip.buildId}${buildNumberSuffix}` : 'The build';
     let outcome;
-    if (metadataUpload.markedFailed) {
+    if (metadataUpload.delta) {
+        // The delta build is its own build on the upload service and was never queued; it closes by
+        // itself after an hour. Nothing was marked failed, and nothing was indexed.
+        outcome = '   The pictures were not queued for indexing (the unfinished upload closes by itself).\n' +
+            '   Re-run this job to index it.';
+    } else if (metadataUpload.markedFailed) {
         outcome = `   ${build} is marked failed on the upload service. Re-run this job to index it.`;
     } else if (metadataUpload.markFailedUnsupported) {
         outcome = `   ${build} is left pending: the upload service has no way to mark it failed,\n` +
@@ -1226,7 +1241,7 @@ async function resolveCoverage(argv, logger) {
         } else {
             const needsScreenshots = Boolean(argv.withAnalysis);
             const outputZipPath = needsScreenshots
-                ? path.join(os.tmpdir(), `scry-metadata-${Date.now()}.zip`)
+                ? path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'scry-metadata-')), 'metadata.zip')
                 : null;
 
             const result = await runCoverageAnalysis({

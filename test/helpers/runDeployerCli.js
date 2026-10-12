@@ -7,14 +7,17 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { startStub } = require('../fixtures/stub-upload-service.js');
+const { startDeltaStub } = require('./deltaStub.js');
 
 const ROOT = path.join(__dirname, '..', '..');
 const CLI = path.join(ROOT, 'bin', 'cli.js');
 const FAKE_SBCOV = path.join(ROOT, 'test', 'fixtures', 'fake-sbcov.js');
 const STORYBOOK_DIR = path.join(ROOT, 'test', 'fixtures', 'storybook-static');
 
-async function runDeployerCli({ args = [], sbcovMode = 'ok', metadata = 'ok', ciTimings = 'ok', actionsApi = 'ok', metadataRate = 0, presign = 'none', metadataPut = 'ok', metadataComplete = 'ok', env = {}, configFile = null, command = null } = {}) {
-  const stub = await startStub({ metadata, ciTimings, actionsApi, metadataRate, presign, metadataPut, metadataComplete });
+async function runDeployerCli({ args = [], sbcovMode = 'ok', metadata = 'ok', ciTimings = 'ok', actionsApi = 'ok', metadataRate = 0, presign = 'none', metadataPut = 'ok', metadataComplete = 'ok', env = {}, configFile = null, command = null, delta = null } = {}) {
+  // delta: options for the /delta stub (test/helpers/deltaStub.js); null = no /delta route (an upload service without it).
+  const deltaStub = delta ? await startDeltaStub(delta) : null;
+  const stub = await startStub({ metadata, ciTimings, actionsApi, metadataRate, presign, metadataPut, metadataComplete, delegate: deltaStub ? deltaStub.url : null });
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'scry-deployer-e2e-'));
   const argsFile = path.join(cwd, 'sbcov-args.json');
   if (configFile) fs.writeFileSync(path.join(cwd, '.storybook-deployer.json'), configFile);
@@ -57,11 +60,14 @@ async function runDeployerCli({ args = [], sbcovMode = 'ok', metadata = 'ok', ci
       sbcovArgs,
       requests: stub.requests.slice(),
       failed: stub.failed.slice(),
+      deltaRequests: deltaStub ? deltaStub.requests.slice() : [],
+      deltaStorageRequests: deltaStub ? deltaStub.storageRequests.slice() : [],
       sentMetadata: stub.requests.some((r) => r.method === 'POST' && /\/metadata$/.test(r.path)),
       hostedStorybook: stub.requests.some((r) => r.method === 'PUT' && /storybook\.zip$/.test(r.path)),
     };
   } finally {
     await stub.close();
+    if (deltaStub) await deltaStub.close();
     fs.rmSync(cwd, { recursive: true, force: true });
   }
 }
