@@ -8,6 +8,7 @@ const path = require('path');
 const os = require('os');
 const { zipDirectory } = require('../lib/archive.js');
 const { getApiClient, uploadBuild, sanitizeServerText } = require('../lib/apiClient.js');
+const { removeDeltaBundle } = require('../lib/deltaUpload.js');
 const { createLogger } = require('../lib/logger.js');
 const { ApiError, UserInputError } = require('../lib/errors.js');
 const { loadConfig } = require('../lib/config.js');
@@ -482,6 +483,15 @@ async function runDeployment(argv) {
         // uploads the metadata ZIP (legacy path, unchanged keys), so the sibling is only removed.
         const scfSibling = metadataZipPath ? metadataZipPath.replace(/\.zip$/i, '') + '.scf.zip' : null;
         if (scfSibling && fs.existsSync(scfSibling)) fs.unlinkSync(scfSibling);
+        // The delta bundle (manifest + picture copies) sbcov wrote for the manifest-first upload.
+        if (metadataZipPath) {
+            removeDeltaBundle(metadataZipPath);
+            // The ZIP lives in a private directory of its own (see runCoverage); drop it once empty.
+            const zipDir = path.dirname(metadataZipPath);
+            if (path.basename(zipDir).startsWith('scry-metadata-')) {
+                try { fs.rmdirSync(zipDir); } catch { /* not empty or already gone */ }
+            }
+        }
     }
 }
 
@@ -1226,7 +1236,7 @@ async function resolveCoverage(argv, logger) {
         } else {
             const needsScreenshots = Boolean(argv.withAnalysis);
             const outputZipPath = needsScreenshots
-                ? path.join(os.tmpdir(), `scry-metadata-${Date.now()}.zip`)
+                ? path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'scry-metadata-')), 'metadata.zip')
                 : null;
 
             const result = await runCoverageAnalysis({
