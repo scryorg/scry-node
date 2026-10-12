@@ -13,6 +13,7 @@ Pre-change reference (no `transfers`, byte for byte what Scry Sync 0.1.7 gets): 
 
 ## Copy in scry-node
 
-Copied on 2026-10-12 from the upload service worktree branch `feat/deployer-delta-r2` (base stage `85aa920`; the branch had no commit sha yet, so
-re-copy from the merged files when the service PR lands). The pictures behind the oids are `fakePng(1..3)`, ported byte for byte into
-`test/helpers/deltaFixtures.js`; `test/deltaUpload.test.js` asserts every oid and size, so drift fails loudly.
+Copied on 2026-10-12 from scryorg/scry-storybook-upload-service, branch `feat/deployer-delta-r2` at `dfc843b`
+(`git show dfc843b:test/fixtures/deployer-delta/<file>`); the six JSON files are byte for byte that commit's. The pictures behind the oids
+are `fakePng(1..3)`, ported byte for byte into `test/helpers/deltaFixtures.js`; `test/deltaUpload.test.js` asserts every oid and size,
+so drift fails loudly.
