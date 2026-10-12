@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scry Snip"
+  short_description: "Use your latest Scry Snip capture"
+  default_prompt: "Use $ss to load my latest Scry Snip and help me with it."

@@ -22,6 +22,17 @@ or CI secret store.
 See the [setup guide](https://docs.scrymore.com/guide/skill) for installation
 options, or inspect the [skill instructions](skills/scry-setup/SKILL.md).
 
+### Use your latest Scry Snip
+
+If you take snips with Scry Sync, install the `ss` skill and type `/ss` (or
+`/ss fix this`) to hand your newest snip to the assistant:
+
+```bash
+npx skills add epinnock/scry-node --skill ss
+```
+
+It needs the Scry MCP connection that `scry-setup` configures.
+
 ## Set up directly with the CLI
 
 `init` writes configuration and workflows, configures GitHub secrets, then
