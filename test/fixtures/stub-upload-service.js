@@ -55,8 +55,9 @@ function startStub({ port = 0, metadata = 'ok', ciTimings = 'ok', actionsApi = '
     const throttle = metadataRate > 0 && req.method === 'POST' && /\/metadata(\?|$)/.test(req.url);
     const counted = req.method === 'PUT' && req.url.startsWith('/put-meta/');
     let counter = 0;
+    const putHash = counted ? require('crypto').createHash('sha256') : null;
     req.on('data', (c) => {
-      if (counted) { counter += c.length; return; }
+      if (counted) { counter += c.length; putHash.update(c); return; }
       chunks.push(c);
       if (throttle) {
         // Read no faster than metadataRate: TCP backpressure slows the sender.
@@ -67,6 +68,7 @@ function startStub({ port = 0, metadata = 'ok', ciTimings = 'ok', actionsApi = '
     req.on('end', () => {
       const body = Buffer.concat(chunks);
       const entry = { method: req.method, path: req.url.split('?')[0], query: req.url.split('?')[1] || '', bytes: counted ? counter : body.length, ms: Date.now() - started };
+      if (counted) entry.sha256 = putHash.digest('hex'); // what reached storage, byte for byte
       if (/json/.test(String(req.headers['content-type'] || ''))) {
         try { entry.json = JSON.parse(body.toString('utf8')); } catch (_) { entry.json = null; }
       }

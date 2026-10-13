@@ -25,6 +25,9 @@
 // FAKE_SBCOV_NO_DURATION=1 leaves execution.summary.duration out of the report.
 // FAKE_SBCOV_PAD_BYTES=<n> adds an incompressible images/_pad.png of n bytes to
 // the archive (a large library's metadata ZIP).
+// FAKE_SBCOV_WEBP=1 behaves like sbcov 0.8 (capture-format webp): images/<story>.webp members
+// (a real lossless WebP) and capture.format / capture.encoder in the manifest.
+// FAKE_SBCOV_ZIP_SHA_FILE, when set, receives the sha256 of the ZIP it wrote (hex).
 // FAKE_SBCOV_ARGS_FILE, when set, receives the argv it was called with (JSON).
 const fs = require('fs');
 const path = require('path');
@@ -37,6 +40,9 @@ const opt = (name) => {
 };
 const OLD = process.env.FAKE_SBCOV_OLD === '1';
 const EXECUTION = !OLD && process.env.FAKE_SBCOV_EXECUTION === '1';
+const WEBP = !OLD && process.env.FAKE_SBCOV_WEBP === '1';
+// A 1x1 lossless WebP (RIFF/WEBP/VP8L).
+const WEBP_BYTES = Buffer.from('UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==', 'base64');
 const EXECUTE_MS = Number(process.env.FAKE_SBCOV_EXECUTE_MS || 1200);
 if (argv.includes('--help')) {
   console.log('Usage: scry-sbcov [options]\n  --output <path>\n  --output-zip <path>\n  --screenshots' +
@@ -125,22 +131,25 @@ function writeZip(entries, dropped = []) {
   return new Promise((resolve, reject) => {
     const out = fs.createWriteStream(outputZip);
     const a = archiver('zip', { zlib: { level: 9 } });
-    out.on('close', resolve);
+    out.on('close', () => {
+      if (process.env.FAKE_SBCOV_ZIP_SHA_FILE) fs.writeFileSync(process.env.FAKE_SBCOV_ZIP_SHA_FILE, require('crypto').createHash('sha256').update(fs.readFileSync(outputZip)).digest('hex'));
+      resolve();
+    });
     a.on('error', reject);
     a.pipe(out);
-    const metadata = entries.map((storyId) => ({ storyId, componentName: 'Button', screenshotPath: `images/${storyId}.png` }));
+    const metadata = entries.map((storyId) => ({ storyId, componentName: 'Button', screenshotPath: `images/${storyId}.${WEBP ? 'webp' : 'png'}` }));
     a.append(JSON.stringify(metadata, null, 2), { name: 'metadata.json' });
     if (!OLD) {
       a.append(JSON.stringify({
         declared: STORIES.length,
         captured: entries.length,
         dropped: dropped.map((storyId) => ({ storyId, storyTitle: storyId, reason: 'timeout' })),
-        capture: { mode: 'root', viewport: '1280x720', scale: 2, source: 'defaults' },
-        sbcovVersion: EXECUTION ? '0.7.0-fake' : '0.5.2-fake',
+        capture: { mode: 'root', viewport: '1280x720', scale: 2, source: 'defaults', ...(WEBP ? { format: 'webp', encoder: { name: 'sharp', version: '0.35.5', libwebp: '1.6.0', mode: 'lossless', method: 4 }, webpMaxPixels: 6000000, pngFallbacks: [] } : {}) },
+        sbcovVersion: WEBP ? '0.8.0-fake' : EXECUTION ? '0.7.0-fake' : '0.5.2-fake',
         ...(EXECUTION ? { execution: timingBlock(entries.length, dropped.length) } : {}),
       }), { name: 'sbcov-manifest.json' });
     }
-    for (const storyId of entries) a.append(Buffer.from('png'), { name: `images/${storyId}.png` });
+    for (const storyId of entries) a.append(WEBP ? WEBP_BYTES : Buffer.from('png'), { name: `images/${storyId}.${WEBP ? 'webp' : 'png'}` });
     const pad = Number(process.env.FAKE_SBCOV_PAD_BYTES || 0);
     if (pad > 0) a.append(require('crypto').randomBytes(pad), { name: 'images/_pad.png', store: true });
     a.finalize();
