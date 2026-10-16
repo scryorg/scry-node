@@ -43,11 +43,29 @@ check make-scf.mjs                            "$FLU/scripts/make-scf.mjs"
 check make-scf.mjs                            "$AND/scripts/make-scf.mjs"
 
 # G5 on the CI templates: default branch only, no pull_request(_target), no self-hosted, key only on upload.
-for y in scry-capture-ios.yml scry-capture-android.yml; do
+for y in scry-capture-ios.yml scry-capture-android.yml flutter/scry-capture-flutter.yml; do
   f="$ASSETS/$y"
   grep -Eq '^\s*(pull_request|pull_request_target)\s*:' "$f" && { echo "G5 FAIL $y: pull_request trigger"; fail=1; }
   grep -qi 'self-hosted' "$f" && { echo "G5 FAIL $y: self-hosted"; fail=1; }
   grep -q 'branches: \[main\]' "$f" || { echo "G5 FAIL $y: not limited to a branch"; fail=1; }
   n="$(grep -c 'secrets\.' "$f")"; [ "$n" -eq 1 ] || { echo "G5 FAIL $y: secrets referenced $n times (want 1, the upload step)"; fail=1; }
 done
+# The Flutter template is headless-only and must not fail red without credentials (F68): every action is pinned to a
+# full commit SHA, the deployer is pinned, the checkout drops its credentials, the upload step is gated on the
+# default branch and skips with a notice when SCRY_API_KEY / SCRY_PROJECT_ID are missing. test/skill-flutter-ci-template.test.js
+# runs the full rule set (with broken copies) in jest.
+y="$ASSETS/flutter/scry-capture-flutter.yml"
+if [ -f "$y" ]; then
+  code="$(grep -v '^[[:space:]]*#' "$y")"
+  bad_uses="$(echo "$code" | grep -E '^\s*-?\s*uses:' | grep -Ev 'uses:\s*[A-Za-z0-9._-]+/[A-Za-z0-9._-]+@[0-9a-f]{40}\s+# v[0-9]' || true)"
+  [ -z "$bad_uses" ] || { echo "G5 FAIL flutter-ci: action not pinned to a full SHA with a version comment: $bad_uses"; fail=1; }
+  echo "$code" | grep -q 'persist-credentials: false' || { echo "G5 FAIL flutter-ci: checkout keeps credentials"; fail=1; }
+  echo "$code" | grep -qF "github.ref == format('refs/heads/{0}', github.event.repository.default_branch)" || { echo "G5 FAIL flutter-ci: upload not gated on the default branch"; fail=1; }
+  echo "$code" | grep -qF "github.ref != format('refs/heads/{0}', github.event.repository.default_branch)" || { echo "G5 FAIL flutter-ci: no notice step for a push to a branch that is not the default branch"; fail=1; }
+  echo "$code" | grep -q '::notice ' || { echo "G5 FAIL flutter-ci: no skip notice for missing credentials"; fail=1; }
+  echo "$code" | grep -Eq 'capture\.sh headless' || { echo "G5 FAIL flutter-ci: not headless"; fail=1; }
+  [ "$(echo "$code" | grep -c 'scry-deployer@0.11.1')" -eq 2 ] || { echo "G5 FAIL flutter-ci: deployer not pinned to 0.11.1 on both steps"; fail=1; }
+else
+  echo "MISSING flutter/scry-capture-flutter.yml"; fail=1
+fi
 [ "$fail" -eq 0 ] && echo "PASS: skill assets match the samples, CI guards intact" || { echo "FAIL: drift found" >&2; exit 1; }

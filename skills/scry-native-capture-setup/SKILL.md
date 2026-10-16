@@ -56,7 +56,7 @@ Only these, nothing else in the user's app:
 | Capture script | `scripts/capture.sh` | `assets/capture-ios.sh` or `capture-android.sh` |
 | Bundle writer | `scripts/make-scf.mjs` | `assets/make-scf.mjs` (shared) |
 | Screen list | iOS: none, the app prints it (`-ScryList YES`). Android: `scripts/screens.json` | Android: by hand, one entry per registry entry |
-| CI (optional) | `.github/workflows/scry-capture.yml` | `assets/scry-capture-ios.yml` or `scry-capture-android.yml` |
+| CI (optional) | `.github/workflows/scry-capture.yml` | `assets/scry-capture-ios.yml`, `scry-capture-android.yml` or (Flutter) `assets/flutter/scry-capture-flutter.yml` |
 
 Plus the one-line wiring in the app entry point and `.scry/` and `.build/` in `.gitignore`. The
 assets are copies of the Kettle sample apps (scryorg/scry-sample-ios, scry-sample-android): keep
@@ -148,11 +148,16 @@ immersive mode or the PNGs carry a status-bar band. A fresh Android emulator nee
 - No new dependency in the user's app, project file settings or build config. The hook is plain
   SwiftUI / Compose. Flutter: only `integration_test` and `flutter_test` as `dev_dependencies`, nothing under
   `dependencies:`, nothing in `lib/`, `android/` or `ios/`.
-- CI, only if asked: copy the matching `assets/scry-capture-*.yml` and keep its guards. It runs on
-  a push to the default branch only (set the branch name to match the repo's), never on
+- CI, only if asked: copy the matching `assets/scry-capture-*.yml` (Flutter:
+  `assets/flutter/scry-capture-flutter.yml`) and keep its guards. It runs on
+  a push to the default branch only (Flutter: if the default branch is not `main`, change `branches: [main]` in the
+  template's `on:` block, the only edit; the upload step compares with the repo's default branch itself), never on
   `pull_request` or `pull_request_target`, never on a self-hosted runner, with `permissions:
   contents: read`, and `SCRY_API_KEY` appears only on the upload step. Tell the user it has not run
-  on a hosted runner yet.
+  on a hosted runner yet. The Flutter template captures headless on `ubuntu-latest` (platform `other`), keeps
+  every action pinned to a commit SHA, and ends the upload step green with a notice, uploading nothing, when
+  `SCRY_API_KEY` or `SCRY_PROJECT_ID` is not set (a fork, a fresh clone). It ships no emulator job: for a device
+  capture in CI point the user to `references/flutter.md`.
 - Do not include source text (`--include-source`) unless the user asks.
 - Never read, print, write to a file, log or commit an API key. Credentials are `SCRY_PROJECT_ID`
   and `SCRY_API_KEY`, set by the user in their environment or CI secrets, never by you. Do not run
@@ -171,5 +176,9 @@ The hooks, `capture.sh` scripts and `make-scf.mjs` ran end to end on the Kettle 
 simulator, Pixel 6 API 34 emulator): bundles pass `--dry-run` and the release builds hold no capture
 code. The Flutter templates ran headless on a scratch app (Flutter 3.47.6, Linux): valid bundle, two runs
 byte-identical, the font guard stops the run; the emulator and simulator paths run in the Kettle Flutter sample
-(scryorg/scry-sample-flutter). The CI templates have not run on a hosted runner. Untested: classic (non-synchronized) Xcode
+(scryorg/scry-sample-flutter). The CI templates have not run on a hosted runner. The Flutter CI template
+(`assets/flutter/scry-capture-flutter.yml`) was checked without a runner: `actionlint`, the Kettle Flutter sample's
+`scripts/check-workflows.sh` guards, and its steps (`capture.sh headless`, `upload --dry-run`, and the upload step's
+skip logic with and without credentials) run locally on Linux with Flutter 3.47.6. GitHub Actions itself has not run it.
+Untested: classic (non-synchronized) Xcode
 projects, multi-module Android apps, `singleTop` activities.
