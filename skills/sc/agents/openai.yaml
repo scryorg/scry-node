@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scry Clipboard"
+  short_description: "Use what you copied with Scry Copy"
+  default_prompt: "Use $sc to load my shared Scry clipboard and help me with it."
