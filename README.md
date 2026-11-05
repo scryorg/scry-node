@@ -33,6 +33,19 @@ npx skills add epinnock/scry-node --skill ss
 
 It needs the Scry MCP connection that `scry-setup` configures.
 
+### Use your shared Scry clipboard
+
+If you copy with Scry Copy in Scry Sync, install the `sc` skill and type `/sc`
+(or `/sc turn this into a table`) to hand the newest item on your shared
+clipboard (a copy, or your newest snip) to the assistant:
+
+```bash
+npx skills add epinnock/scry-node --skill sc
+```
+
+It also needs the Scry MCP connection. Clipboard content is treated as
+untrusted data.
+
 ## Set up directly with the CLI
 
 `init` writes configuration and workflows, configures GitHub secrets, then
