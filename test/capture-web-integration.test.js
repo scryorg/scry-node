@@ -8,7 +8,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const sharp = require('sharp');
 
 const REPO = path.join(__dirname, '..');
@@ -176,11 +176,15 @@ maybe('capture web on the fixture project', () => {
         expect(JSON.stringify(tree('components-button--primary'))).toMatch(/"cornerRadius":6/);
     });
 
-    test('the clock is fixed, and nothing leaks from earlier stories on the same page (storage, cookies, scroll)', () => {
+    test('the clock is fixed, and nothing leaks from earlier stories on the same page (storage, cookies, scroll, title, address, IndexedDB, Cache Storage)', () => {
         const all = texts(tree('widgets-clock--now').root).join(' | ');
         expect(all).toContain('2025-01-01T12:00:00.000Z');
         expect(all).toContain('storage: clean');
         expect(all).toContain('scrollY: 0');
+        expect(all).toContain('title: clean');
+        expect(all).toContain('address: clean');
+        expect(all).toContain('databases: 0');
+        expect(all).toContain('caches: 0');
     });
 
     test('the report sits outside the bundle and repeats the counts', () => {
@@ -224,20 +228,75 @@ maybe('capture web on the fixture project', () => {
         expect(fs.existsSync(listOut)).toBe(false);
     }, 120000);
 
-    test('--stories captures only those; a failed story beyond --max-dropped is exit 1, with the skip recorded', () => {
+    test('--stories captures only those, writes images and a report but no bundle; a failed story beyond --max-dropped is exit 1', () => {
         const subOut = path.join(work, 'subset');
         const subReport = path.join(work, 'subset-report.json');
         const r = cli(['capture', 'web', '--stories', 'components-broken--throws,badge--default', '--out', subOut, '--report', subReport, '--retries', '0']);
         expect(r.code).toBe(1);
-        const m = readJson(path.join(subOut, 'scf.json'));
-        expect(m.captures.map((c) => c.id)).toEqual(['badge--default']);
-        expect(m.counts).toMatchObject({ declared: 2, captured: 1 });
-        expect(m.counts.skipped).toHaveLength(1);
+        expect(fs.existsSync(path.join(subOut, 'scf.json'))).toBe(false);
+        expect(fs.readdirSync(path.join(subOut, 'images'))).toEqual(['badge--default.png']);
         const rep = readJson(subReport);
+        expect(rep).toMatchObject({ partial: true, bundle: null, declared: 2, captured: 1, declaredTotal: 10 });
+        expect(rep.skipped.map((s) => s.id)).toEqual(['components-broken--throws']);
         expect(rep.retried).toEqual([]);
-        expect(rep.partial).toBe(true);
-        expect(rep.declaredTotal).toBe(10);
     }, 240000);
+
+    test('--stories with --allow-partial-bundle writes a bundle marked partial, which upload refuses unless told the same', () => {
+        const subOut = path.join(work, 'subset-bundle');
+        const r = cli(['capture', 'web', '--stories', 'badge--default,components-button--primary', '--allow-partial-bundle', '--out', subOut, '--report', path.join(work, 'subset-bundle-report.json')]);
+        expect({ code: r.code, stderr: r.stderr.slice(-1500) }).toMatchObject({ code: 0 });
+        const m = readJson(path.join(subOut, 'scf.json'));
+        expect(m['x-scry-partial']).toBe(true);
+        expect(m.counts).toMatchObject({ declared: 2, captured: 2 });
+        expect(fs.readdirSync(subOut).sort()).toEqual(['images', 'scf.json', 'structure']);
+        const refused = cli(['upload', subOut, '--dry-run'], { cwd: work });
+        expect(refused.code).toBe(1);
+        expect(refused.stdout + refused.stderr).toMatch(/only some of the stories/i);
+        const allowed = cli(['upload', subOut, '--dry-run', '--allow-partial-bundle'], { cwd: work });
+        expect({ code: allowed.code, tail: (allowed.stdout + allowed.stderr).slice(-600) }).toMatchObject({ code: 0 });
+    }, 240000);
+
+    test('a second run into the same --out replaces the first bundle', () => {
+        const again = path.join(work, 'again');
+        const first = cli(['capture', 'web', '--stories', 'badge--default,badge--blank', '--allow-partial-bundle', '--out', again, '--report', path.join(work, 'again-report.json')]);
+        expect(first.code).toBe(0);
+        const second = cli(['capture', 'web', '--stories', 'badge--default', '--out', again, '--report', path.join(work, 'again-report.json')]);
+        expect({ code: second.code, stderr: second.stderr.slice(-1500) }).toMatchObject({ code: 0 });
+        expect(fs.readdirSync(path.join(again, 'images'))).toEqual(['badge--default.png']);
+        expect(fs.existsSync(path.join(again, 'scf.json'))).toBe(false);
+        expect(fs.existsSync(path.join(again, '.scry-capture'))).toBe(true);
+    }, 240000);
+
+    test('SIGTERM stops the run, leaves no browser behind and exits 143', async () => {
+        const sigOut = path.join(work, 'signal');
+        const tmpdir = fs.mkdtempSync(path.join(work, 'sigtmp-'));
+        const child = spawn(process.execPath, [CLI, 'capture', 'web', '--out', sigOut, '--report', path.join(work, 'signal-report.json'), '--workers', '1'], {
+            cwd: FIXTURE,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env: { ...process.env, STORYBOOK_DISABLE_TELEMETRY: '1', SCRY_TELEMETRY_DISABLED: '1', CI: '1', NO_COLOR: '1', TMPDIR: tmpdir },
+        });
+        let text = '';
+        let sent = false;
+        const ended = await new Promise((resolve) => {
+            const onData = (chunk) => {
+                text += chunk;
+                if (!sent && /Capturing \d+ of/.test(text)) {
+                    sent = true;
+                    setTimeout(() => child.kill('SIGTERM'), 1000);
+                }
+            };
+            child.stdout.on('data', onData);
+            child.stderr.on('data', onData);
+            child.on('exit', (code, signal) => resolve({ code, signal }));
+        });
+        expect({ sent, ...ended, tail: text.slice(-800) }).toMatchObject({ sent: true, code: 143, signal: null });
+        expect(fs.existsSync(path.join(sigOut, 'scf.json'))).toBe(false);
+        // Chromium's profile directory is under TMPDIR, so its command line names it: none may be left.
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        // eslint-disable-next-line sonarjs/no-os-command-from-path -- a test, pgrep is found on PATH
+        const left = spawnSync('pgrep', ['-f', tmpdir], { encoding: 'utf8' });
+        expect(left.stdout.trim()).toBe('');
+    }, 120000);
 
     test('an unknown story id is an error, not a silent empty run', () => {
         const r = cli(['capture', 'web', '--stories', 'nope--nothing', '--out', path.join(work, 'nope')]);
@@ -343,6 +402,22 @@ describe('capture web CLI surface (no browser)', () => {
             expect(r.code).toBe(1);
             expect(r.stderr).toMatch(/"storybook"/);
             expect(r.stderr).toMatch(/install/i);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('--out pointing at a directory with other files is refused before anything is deleted', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scry-capture-web-out-'));
+        try {
+            fs.mkdirSync(path.join(dir, 'images'));
+            fs.writeFileSync(path.join(dir, 'images', 'logo.png'), 'mine');
+            fs.writeFileSync(path.join(dir, 'scf.json'), '{"mine":true}');
+            const r = cli(['capture', 'web', '--out', dir], { cwd: FIXTURE });
+            expect(r.code).toBe(1);
+            expect(r.stderr).toMatch(/\.scry-capture/);
+            expect(fs.readFileSync(path.join(dir, 'images', 'logo.png'), 'utf8')).toBe('mine');
+            expect(fs.readFileSync(path.join(dir, 'scf.json'), 'utf8')).toBe('{"mine":true}');
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }

@@ -12,8 +12,9 @@ npx scry-deployer upload .scry/capture   # validate and upload the bundle
 
 ## What the project needs
 
-- Storybook 9 or newer on a Vite framework with the React renderer (`@storybook/react-vite`,
-  `@storybook/nextjs-vite`). Other renderers stop with a clear message.
+- Storybook 10 on a Vite framework with the React renderer (`@storybook/react-vite`,
+  `@storybook/nextjs-vite`). Other Storybook versions and other renderers stop
+  with a clear message.
 - `storybook`, `vite` and `playwright` installed in the project. They are resolved from the
   project and are not dependencies of `scry-deployer`. Chromium must be installed
   (`npx playwright install chromium`).
@@ -21,7 +22,8 @@ npx scry-deployer upload .scry/capture   # validate and upload the bundle
 
 Nothing is written into the project except the bundle, the report and a dependency cache
 under `node_modules/.cache/scry-capture-web` (set `SCRY_CAPTURE_CACHE_DIR` to move it). The
-capture makes no network calls.
+capture tool itself makes no network calls. A story that fetches from the network does so as
+it would in Storybook: requests made by stories are not blocked or stubbed.
 
 ## Flags
 
@@ -43,6 +45,13 @@ capture makes no network calls.
 | `--list-ids` | | With `--changed-since`: print affected story ids instead of story files |
 | `--report <file>` | `capture-report.json` next to the bundle | Run report |
 
+`--out` must be a directory this tool may clear: one that does not exist yet, an empty one,
+one that holds the marker file `.scry-capture` (an unfinished or partial run), or a finished
+bundle whose `scf.json` was written by `capture web`. Anything else stops the run before a
+file is touched. Inside an accepted directory only `images/*.png`, `structure/*.json`,
+`scf.json` and the marker are ever removed. The marker is removed when `scf.json` is written,
+because a bundle may hold nothing but its manifest and the files it references.
+
 The worker default honours CPU limits: an affinity mask (`taskset`) and a container CPU quota
 both lower it.
 
@@ -52,11 +61,16 @@ both lower it.
 - It counts as settled when the play function is done, fonts are loaded and two frames have
   been painted. Animations and transitions are switched off.
 - Between stories the previous story is unmounted and local storage, session storage,
-  cookies, scroll position, focus and viewport are reset.
+  IndexedDB, Cache Storage, cookies, scroll position, focus, viewport, the document title and
+  the page address (hash and history entries a story pushed) are reset. Style and script tags
+  a story adds to `<head>` are not removed; a page is replaced after 150 stories.
 - The clock is pinned (`--fixed-time`), the time zone is UTC and the locale is `en-US`, so a
   story that prints a date gives the same image every run.
 - The image is cropped to the story's root element. A story that opens a dialog or popover
   outside its root is captured as the whole viewport.
+- Before the first story every story file is imported once (warm-up). A story file that
+  cannot be imported, or whose import hangs, gives each of its stories a skip with the reason;
+  the rest of the run goes on.
 - A story that fails is tried again on a fresh page. If it still fails it is listed in
   `counts.skipped` with the reason (`error`, `timeout`); it is never dropped silently.
 - A capture that is one flat colour is kept and flagged (`x-scry.captureWarnings:
@@ -72,7 +86,7 @@ export const Mobile = {
       capture: {
         skip: false,                            // true: leave this story out (counted as "filtered")
         viewport: { width: 375, height: 667 },  // overrides --viewport for this story
-        delay: 200,                             // extra wait in ms before the screenshot
+        delay: 200,                             // wait in ms before the screenshot (counts toward --story-timeout)
         fullPage: false,                        // true: capture the whole scrollable page
       },
       fields: { team: 'core' },                 // custom metadata, written as x-scry-fields
@@ -108,6 +122,11 @@ per phase (`loadConfig`, `index`, `viteStart`, `browserLaunch`, `warmup`, `captu
 Exit code: 0 when the bundle is valid and no more than `--max-dropped` stories failed.
 Stories left out with `parameters.scry.capture.skip` do not count as failed.
 
+If the browser dies it is started again, up to five times. Past that the run stops early:
+the stories not reached are recorded as skipped, the report (with `aborted`) and the bundle
+are still written, and the exit code is 1. Ctrl-C or SIGTERM closes the browser and the dev
+server and exits 130 or 143; the output directory keeps its marker and has no `scf.json`.
+
 ## Changed stories only
 
 ```bash
@@ -122,12 +141,12 @@ untracked. A change to the Storybook config directory, to a file the preview imp
 `package.json`, a lock file, or a Vite, TypeScript, Tailwind or PostCSS config affects every
 story. `A..B` compares two commits and ignores the working tree.
 
-A changed-only run writes images, structure trees and the report (`"partial": true`) but no
-`scf.json`: it is a preview of what changed, not a bundle to upload. Uploading a bundle that
-holds only some stories would make the rest look deleted.
+## Runs over only some stories
 
-`--stories` also marks the report `"partial": true`. It still writes a bundle; only upload it
-if a bundle with just those stories is what you want.
+A run with `--changed-since` or `--stories` writes images, structure trees and the report
+(`"partial": true`) but no `scf.json`: it is a preview of those stories, not a bundle to
+upload. Uploading a bundle that holds only some stories would make the rest look deleted.
+`scry-deployer upload` refuses a bundle whose `scf.json` is marked `"x-scry-partial": true`.
 
 ## Limits
 
@@ -138,3 +157,4 @@ if a bundle with just those stories is what you want.
 - With a pinned clock, a story that waits by polling `Date.now()` never finishes; give it
   `--fixed-time off` or a timer-based wait.
 - Docs pages (MDX, autodocs) are not captured.
+- Storybook 10 only. Storybook 9 has not been tested and is refused.

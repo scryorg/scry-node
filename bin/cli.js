@@ -877,10 +877,11 @@ async function main() {
                     .option('include-source', { describe: "Also upload each capture's component source text (code.componentFile). Off by default: Scry never needs your code", type: 'boolean', default: false })
                     .option('repo-root', { describe: 'Repository root that code.componentFile paths are relative to (default: cwd)', type: 'string' })
                     .option('dry-run', { describe: 'Validate and zip only; print where the ZIP is', type: 'boolean', default: false })
+                    .option('allow-partial-bundle', { type: 'boolean', default: false, hidden: true })
                     .option('verbose', { describe: 'Enable verbose logging', type: 'boolean' });
             }, async (argv) => {
                 const config = loadConfig(argv);
-                const outcome = await runUploadBundle({ ...config, path: argv.path, includeSource: argv.includeSource, repoRoot: argv.repoRoot, source: argv.source, dryRun: argv.dryRun });
+                const outcome = await runUploadBundle({ ...config, path: argv.path, includeSource: argv.includeSource, repoRoot: argv.repoRoot, source: argv.source, dryRun: argv.dryRun, allowPartialBundle: argv.allowPartialBundle });
                 process.exitCode = outcome.exitCode;
             })
             .command('capture <adapter>', 'Capture stories into a Scry Capture Format bundle (adapters: rn, web)', (yargs) => {
@@ -894,7 +895,7 @@ async function main() {
                     .option('build', { describe: 'Build and install the app with `expo run:<platform>` when it is not installed', type: 'boolean', default: false })
                     .option('project-dir', { describe: 'Project directory (default: cwd)', type: 'string' })
                     .option('out', { describe: 'Bundle output directory (default: <project>/.scry/capture)', type: 'string' })
-                    .option('stories', { describe: 'Comma-separated story ids to capture (default: all)', type: 'string' })
+                    .option('stories', { describe: 'Comma-separated story ids to capture (default: all). web: writes images and a report, not an upload bundle', type: 'string' })
                     .option('metro', { describe: 'Start Metro with STORYBOOK_ENABLED=true when the Storybook channel is not already up', type: 'boolean', default: true })
                     .option('ws-port', { describe: 'Storybook channel port', type: 'number', default: 7007 })
                     .option('settle-timeout', { describe: 'Per-story budget in ms to render and settle (two identical frames)', type: 'number', default: 10000 })

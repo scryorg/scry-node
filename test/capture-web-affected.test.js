@@ -93,7 +93,7 @@ describe('changedFiles', () => {
     test('diff against the ref plus untracked files, repo-relative, deduped and sorted', () => {
         const git = fakeGit({
             'rev-parse --show-toplevel': '/repo\n',
-            'diff --name-only -z origin/main --': 'apps/web/src/b.ts\0apps/web/src/a.ts\0',
+            'diff --no-ext-diff --name-only -z origin/main --': 'apps/web/src/b.ts\0apps/web/src/a.ts\0',
             'ls-files --others --exclude-standard -z': 'apps/web/src/new.ts\0apps/web/src/a.ts\0',
         });
         expect(changedFiles('origin/main', { cwd: '/repo/apps/web', exec: git.exec })).toEqual({
@@ -103,13 +103,13 @@ describe('changedFiles', () => {
     });
 
     test('a range A..B is a diff between two commits: untracked files are not added', () => {
-        const git = fakeGit({ 'rev-parse --show-toplevel': '/repo\n', 'diff --name-only -z abc..def --': 'x.ts\0' });
+        const git = fakeGit({ 'rev-parse --show-toplevel': '/repo\n', 'diff --no-ext-diff --name-only -z abc..def --': 'x.ts\0' });
         expect(changedFiles('abc..def', { cwd: '/repo', exec: git.exec }).files).toEqual(['x.ts']);
         expect(git.calls.some((c) => c.startsWith('ls-files'))).toBe(false);
     });
 
     test('an unknown ref is a clear error; an option-looking ref never reaches git', () => {
-        const git = fakeGit({ 'rev-parse --show-toplevel': '/repo\n', 'diff --name-only -z nope --': new Error('fatal: bad revision') });
+        const git = fakeGit({ 'rev-parse --show-toplevel': '/repo\n', 'diff --no-ext-diff --name-only -z nope --': new Error('fatal: bad revision') });
         expect(() => changedFiles('nope', { cwd: '/repo', exec: git.exec })).toThrow(/--changed-since nope/);
         expect(() => changedFiles('--output=/tmp/x', { cwd: '/repo', exec: git.exec })).toThrow(/--changed-since/);
     });

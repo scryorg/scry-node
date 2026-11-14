@@ -1,6 +1,6 @@
 import { within } from 'storybook/test';
 
-/** Taller than the viewport; the play function scrolls to the bottom and focuses the field there. */
+/** Taller than the viewport; the play function scrolls to the bottom, focuses the field there and leaves page state behind. */
 function Bigpage() {
   return (
     <div style={{ width: 600 }}>
@@ -18,5 +18,17 @@ export const Scrolled = {
     const field = within(canvasElement).getByLabelText('Bottom field');
     field.scrollIntoView();
     field.focus();
+    // State a later story on the same page must not see.
+    document.title = 'dirty title';
+    window.history.pushState(null, '', '#dirty');
+    await new Promise((resolve) => {
+      const open = window.indexedDB.open('scry-fixture-leak', 1);
+      open.onsuccess = () => {
+        open.result.close();
+        resolve();
+      };
+      open.onerror = () => resolve();
+    });
+    if (window.caches) await window.caches.open('scry-fixture-leak');
   },
 };
