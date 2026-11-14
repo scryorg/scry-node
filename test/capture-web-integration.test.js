@@ -26,10 +26,15 @@ const ALL_IDS = [
     'components-skipped--hidden',
     'screens-bigpage--scrolled',
     'widgets-clock--now',
+    'widgets-dates--sent-four-minutes-ago',
+    'widgets-dates--sent-last-month',
+    'widgets-waits--elapsed-clock',
+    'widgets-waits--native-timers',
+    'widgets-waits--type-after-load',
 ];
 const STORY_FILES = [
     'src/Badge.stories.jsx', 'src/Bigpage.stories.jsx', 'src/Broken.stories.jsx', 'src/Button.stories.jsx',
-    'src/Clock.stories.jsx', 'src/Counter.stories.jsx', 'src/Skipped.stories.jsx',
+    'src/Clock.stories.jsx', 'src/Counter.stories.jsx', 'src/Dates.stories.jsx', 'src/Skipped.stories.jsx', 'src/Waits.stories.jsx',
 ];
 
 function whyNotRunnable() {
@@ -104,9 +109,9 @@ maybe('capture web on the fixture project', () => {
         expect(report).toBeDefined();
     });
 
-    test('counts are honest: 10 declared, 8 captured, 2 skipped with reasons', () => {
-        expect(manifest.counts.declared).toBe(10);
-        expect(manifest.counts.captured).toBe(8);
+    test('counts are honest: 15 declared, 13 captured, 2 skipped with reasons', () => {
+        expect(manifest.counts.declared).toBe(15);
+        expect(manifest.counts.captured).toBe(13);
         expect(manifest.captures.map((c) => c.id)).toEqual(ALL_IDS.filter((id) => !/broken|skipped/.test(id)));
         expect(manifest.counts.skipped).toHaveLength(2);
         expect(manifest.counts.skipped[0]).toMatchObject({ id: 'components-broken--throws', reason: 'error' });
@@ -176,9 +181,10 @@ maybe('capture web on the fixture project', () => {
         expect(JSON.stringify(tree('components-button--primary'))).toMatch(/"cornerRadius":6/);
     });
 
-    test('the clock is fixed, and nothing leaks from earlier stories on the same page (storage, cookies, scroll, title, address, IndexedDB, Cache Storage)', () => {
+    test('the clock starts at the fixed instant for each story, and nothing leaks from earlier stories on the same page (storage, cookies, scroll, title, address, IndexedDB, Cache Storage)', () => {
         const all = texts(tree('widgets-clock--now').root).join(' | ');
-        expect(all).toContain('2025-01-01T12:00:00.000Z');
+        // Within the story's first second: the clock starts at --fixed-time when the story starts, then runs.
+        expect(all).toMatch(/2026-11-14T12:00:00\.\d{3}Z/);
         expect(all).toContain('storage: clean');
         expect(all).toContain('scrollY: 0');
         expect(all).toContain('title: clean');
@@ -187,9 +193,19 @@ maybe('capture web on the fixture project', () => {
         expect(all).toContain('caches: 0');
     });
 
+    test('play functions that wait on time finish: an elapsed clock, typing after a timer, real timers, dates newer than 2025, dates taken at import', () => {
+        expect(report.skipped.map((s) => s.id)).not.toContain('widgets-waits--elapsed-clock');
+        expect(texts(tree('widgets-waits--elapsed-clock').root).join(' ')).toMatch(/Loading…[\s\S]*\b1 s\b/);
+        expect(texts(tree('widgets-waits--type-after-load').root).join(' ')).toContain('typed: a');
+        expect(capture('widgets-waits--native-timers')).toBeDefined();
+        // 2026-10-01 to the default instant 2026-11-14T12:00Z is 44 days.
+        expect(texts(tree('widgets-dates--sent-last-month').root).join(' ')).toContain('Sent 44 d ago');
+        expect(texts(tree('widgets-dates--sent-four-minutes-ago').root).join(' ')).toContain('Sent 4 min ago');
+    });
+
     test('the report sits outside the bundle and repeats the counts', () => {
-        expect(report.declared).toBe(10);
-        expect(report.captured).toBe(8);
+        expect(report.declared).toBe(15);
+        expect(report.captured).toBe(13);
         expect(report.skipped.map((s) => s.id)).toEqual(['components-broken--throws', 'components-skipped--hidden']);
         expect(report.skipped[0].reason).toBe('error');
         expect(report.retried).toEqual(['components-broken--throws']);
@@ -197,7 +213,7 @@ maybe('capture web on the fixture project', () => {
         expect(report.partial).toBe(false);
         expect(report.workers).toBe(1);
         expect(report.cores.cores).toBeGreaterThan(0);
-        expect(report.fixedTime).toBe('2025-01-01T12:00:00.000Z');
+        expect(report.fixedTime).toBe('2026-11-14T12:00:00.000Z');
         for (const phase of ['loadConfig', 'index', 'viteStart', 'browserLaunch', 'capture', 'write', 'total']) {
             expect({ phase, ms: typeof report.timingsMs[phase] }).toEqual({ phase, ms: 'number' });
         }
@@ -211,7 +227,7 @@ maybe('capture web on the fixture project', () => {
         expect(validate.status).toBe(0);
         const dry = cli(['upload', out, '--dry-run'], { cwd: work });
         expect({ code: dry.code, tail: (dry.stdout + dry.stderr).slice(-600) }).toMatchObject({ code: 0 });
-        expect(dry.stdout + dry.stderr).toMatch(/8 captures, source storybook:web/);
+        expect(dry.stdout + dry.stderr).toMatch(/13 captures, source storybook:web/);
     });
 
     test('nothing but images, structure and scf.json in the bundle; nothing written into the project', () => {
@@ -236,7 +252,7 @@ maybe('capture web on the fixture project', () => {
         expect(fs.existsSync(path.join(subOut, 'scf.json'))).toBe(false);
         expect(fs.readdirSync(path.join(subOut, 'images'))).toEqual(['badge--default.png']);
         const rep = readJson(subReport);
-        expect(rep).toMatchObject({ partial: true, bundle: null, declared: 2, captured: 1, declaredTotal: 10 });
+        expect(rep).toMatchObject({ partial: true, bundle: null, declared: 2, captured: 1, declaredTotal: 15 });
         expect(rep.skipped.map((s) => s.id)).toEqual(['components-broken--throws']);
         expect(rep.retried).toEqual([]);
     }, 240000);
@@ -298,6 +314,20 @@ maybe('capture web on the fixture project', () => {
         expect(left.stdout.trim()).toBe('');
     }, 120000);
 
+    test('--fixed-time off leaves the real clock and timers: the waiting stories still finish', () => {
+        const offOut = path.join(work, 'off');
+        const offReport = path.join(work, 'off-report.json');
+        const ids = 'widgets-clock--now,widgets-waits--elapsed-clock,widgets-waits--native-timers,widgets-waits--type-after-load';
+        const r = cli(['capture', 'web', '--stories', ids, '--fixed-time', 'off', '--allow-partial-bundle', '--out', offOut, '--report', offReport]);
+        expect({ code: r.code, stderr: r.stderr.slice(-1500) }).toMatchObject({ code: 0 });
+        const rep = readJson(offReport);
+        expect(rep).toMatchObject({ captured: 4, skipped: [], fixedTime: null });
+        const m = readJson(path.join(offOut, 'scf.json'));
+        const now = readJson(path.join(offOut, m.captures.find((c) => c.id === 'widgets-clock--now').structure.file));
+        const shown = texts(now.root).join(' ').match(/\d{4}-\d\d-\d\dT[\d:.]+Z/)[0];
+        expect(Math.abs(Date.parse(shown) - Date.now())).toBeLessThan(10 * 60 * 1000);
+    }, 240000);
+
     test('an unknown story id is an error, not a silent empty run', () => {
         const r = cli(['capture', 'web', '--stories', 'nope--nothing', '--out', path.join(work, 'nope')]);
         expect(r.code).toBe(1);
@@ -351,7 +381,7 @@ maybe('capture web on the fixture project', () => {
                 'components-button--mobile.png', 'components-button--primary.png', 'components-button--secondary.png',
             ]);
             const rep = readJson(path.join(repo, '.scry', 'capture-report.json'));
-            expect(rep).toMatchObject({ partial: true, declared: 3, captured: 3, declaredTotal: 10, workers: 2 });
+            expect(rep).toMatchObject({ partial: true, declared: 3, captured: 3, declaredTotal: 15, workers: 2 });
             expect(rep.changedSince).toMatchObject({ ref: 'HEAD', global: false, files: ['src/Button.stories.jsx'] });
             const upload = cli(['upload', partOut, '--dry-run'], { cwd: repo });
             expect(upload.code).not.toBe(0);

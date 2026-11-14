@@ -6,7 +6,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { captureStories, PAGE_CALLS } = require('../lib/capture/web/driver.js');
+const { captureStories, storyClock, PAGE_CALLS } = require('../lib/capture/web/driver.js');
 
 // The smallest thing pngSize accepts: a PNG signature and an IHDR saying 4 x 3.
 const PNG = Buffer.alloc(33);
@@ -35,7 +35,7 @@ const DEFAULT_ANSWERS = {
  * calls (see PAGE_CALLS); ctx is {page, browser, stats}. `goto(page)` may throw.
  */
 function fakePlaywright(answers = {}, { goto } = {}) {
-    const stats = { launches: 0, contexts: 0, contextsClosed: 0, pages: 0, waited: 0, calls: [] };
+    const stats = { launches: 0, contexts: 0, contextsClosed: 0, pages: 0, waited: 0, calls: [], initScripts: [], clockCalls: 0 };
     const all = { ...DEFAULT_ANSWERS, ...answers };
     const makeBrowser = () => {
         let connected = true;
@@ -52,8 +52,11 @@ function fakePlaywright(answers = {}, { goto } = {}) {
                 stats.contexts++;
                 const context = {
                     closed: false,
-                    clock: { setFixedTime: async () => {} },
-                    addInitScript: async () => {},
+                    clock: {
+                        setFixedTime: async () => { stats.clockCalls++; },
+                        install: async () => { stats.clockCalls++; },
+                    },
+                    addInitScript: async (fn, arg) => { stats.initScripts.push({ fn, arg }); },
                     clearCookies: async () => {},
                     async close() {
                         if (!context.closed) {
@@ -139,6 +142,21 @@ describe('captureStories with a fake browser', () => {
         expect(out.results.get('x--a').result.size).toEqual({ width: 4, height: 3 });
         expect(out.aborted).toBeNull();
         expect(pw.stats.contextsClosed).toBe(pw.stats.contexts);
+    });
+
+    test('the page clock is the story clock, set up in every browser context, never Playwright\'s clock (its fake timers break play functions)', async () => {
+        const pw = fakePlaywright();
+        await run(pw, [story('A'), story('B')]);
+        expect(pw.stats.clockCalls).toBe(0);
+        expect(pw.stats.initScripts).toHaveLength(pw.stats.contexts);
+        for (const script of pw.stats.initScripts) expect(script).toEqual({ fn: storyClock, arg: Date.parse('2025-01-01T12:00:00.000Z') });
+    });
+
+    test('--fixed-time off adds no clock at all', async () => {
+        const pw = fakePlaywright();
+        await run(pw, [story('A')], { fixedTime: null });
+        expect(pw.stats.clockCalls).toBe(0);
+        expect(pw.stats.initScripts).toEqual([]);
     });
 
     test('a story that fails is tried once more, on a fresh page', async () => {
