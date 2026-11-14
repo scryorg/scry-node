@@ -908,7 +908,7 @@ async function main() {
                     .option('story-timeout', { describe: 'web: per-story budget in ms to render and finish its play function', type: 'number', default: 15000 })
                     .option('scale', { describe: 'web: device scale factor of the images, above 0 and at most 4', type: 'number', default: 1 })
                     .option('viewport', { describe: 'web: browser viewport WIDTHxHEIGHT', type: 'string', default: '1280x720' })
-                    .option('fixed-time', { describe: 'web: the instant the page clock is pinned to (ISO 8601), or "off" (default: 2025-01-01T12:00:00Z)', type: 'string' })
+                    .option('fixed-time', { describe: 'web: the instant the page clock starts at for each story (ISO 8601), or "off" for the real clock (default: 2026-11-14T12:00:00Z)', type: 'string' })
                     .option('changed-since', { describe: 'web: capture only the stories affected by changes since this git ref. Writes images and a report, never an upload bundle', type: 'string' })
                     .option('list', { describe: 'web: print the story ids (with --changed-since: the affected story files) one per line and capture nothing', type: 'boolean', default: false })
                     .option('list-ids', { describe: 'web: with --changed-since, print the affected story ids instead of story files', type: 'boolean', default: false })

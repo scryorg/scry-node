@@ -38,7 +38,7 @@ it would in Storybook: requests made by stories are not blocked or stubbed.
 | `--story-timeout <ms>` | `15000` | Per-story budget to render and finish its play function |
 | `--scale <n>` | `1` | Device scale factor of the images |
 | `--viewport <WxH>` | `1280x720` | Browser viewport |
-| `--fixed-time <iso\|off>` | `2025-01-01T12:00:00Z` | Instant the page clock is pinned to |
+| `--fixed-time <iso\|off>` | `2026-11-14T12:00:00Z` | Instant the page clock starts at for each story; `off` for the real clock |
 | `--stories <ids>` | all | Comma-separated story ids |
 | `--changed-since <ref>` | | Capture only stories affected by changes since a git ref |
 | `--list` | | Print story ids, one per line, and capture nothing |
@@ -64,8 +64,12 @@ both lower it.
   IndexedDB, Cache Storage, cookies, scroll position, focus, viewport, the document title and
   the page address (hash and history entries a story pushed) are reset. Style and script tags
   a story adds to `<head>` are not removed; a page is replaced after 150 stories.
-- The clock is pinned (`--fixed-time`), the time zone is UTC and the locale is `en-US`, so a
-  story that prints a date gives the same image every run.
+- The page clock reads `--fixed-time` while story files load, and runs at real speed from
+  `--fixed-time` once each story starts: `new Date()`, `Date.now()` and `Intl.DateTimeFormat`
+  without a date read it. The time zone is UTC and the locale is `en-US`, so a story that
+  prints a date gives the same image every run, and a play function that waits for time to
+  pass (an elapsed timer) still finishes. Timers, `requestAnimationFrame` and
+  `performance.now` are the browser's own.
 - The image is cropped to the story's root element. A story that opens a dialog or popover
   outside its root is captured as the whole viewport.
 - Before the first story every story file is imported once (warm-up). A story file that
@@ -154,7 +158,10 @@ upload. Uploading a bundle that holds only some stories would make the rest look
 - Vite frameworks only. A webpack-based Storybook must be built and deployed the usual way.
 - The affected-story graph follows JavaScript and TypeScript imports. It records an imported
   CSS file but does not follow that file's own `@import` chain.
-- With a pinned clock, a story that waits by polling `Date.now()` never finishes; give it
-  `--fixed-time off` or a timer-based wait.
+- The clock runs while a story renders and plays, so a story that prints the time to the
+  second (or finer) can differ between runs if its play function takes over a second.
+- A story whose data holds dates later than `--fixed-time` sees them in the future; pass a
+  later `--fixed-time` for such a project.
+- Web workers and `Temporal` read the real clock.
 - Docs pages (MDX, autodocs) are not captured.
 - Storybook 10 only. Storybook 9 has not been tested and is refused.
