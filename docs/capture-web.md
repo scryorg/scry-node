@@ -162,6 +162,7 @@ upload. Uploading a bundle that holds only some stories would make the rest look
   second (or finer) can differ between runs if its play function takes over a second.
 - A story whose data holds dates later than `--fixed-time` sees them in the future; pass a
   later `--fixed-time` for such a project.
-- Web workers and `Temporal` read the real clock.
+- Web workers and `Temporal` read the real clock. Inside an iframe the clock stays at
+  `--fixed-time` for the whole story (it only starts running in the story's own page).
 - Docs pages (MDX, autodocs) are not captured.
 - Storybook 10 only. Storybook 9 has not been tested and is refused.

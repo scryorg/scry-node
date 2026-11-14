@@ -70,7 +70,7 @@ describe('storyClock', () => {
         const { perf, run } = page();
         run('__scryClock.restart()');
         perf.t += 3 * 60 * 60 * 1000;
-        const fmt = "new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', hour: 'numeric', hour12: false })";
+        const fmt = "new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', hour: 'numeric', hourCycle: 'h23' })";
         expect(run(`${fmt}.format()`)).toBe('15');
         expect(run(`${fmt}.formatToParts().find((p) => p.type === 'hour').value`)).toBe('15');
         expect(run(`${fmt}.format(new Date(0))`)).toBe('00');
