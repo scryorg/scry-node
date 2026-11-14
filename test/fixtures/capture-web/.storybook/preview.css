@@ -1,0 +1,6 @@
+body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #ffffff; color: #111827; }
+.fixture-frame { display: inline-block; }
+.fixture-frame[data-theme='dark'] { background: #111827; color: #f9fafb; }
+.btn { border: 1px solid #1d4ed8; background: #2563eb; color: #ffffff; border-radius: 6px; padding: 8px 16px; font-size: 14px; }
+.btn.secondary { background: #ffffff; color: #1d4ed8; }
+.badge { background: #fde68a; border-radius: 9999px; padding: 2px 10px; font-size: 12px; }
