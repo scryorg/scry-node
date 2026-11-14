@@ -877,31 +877,65 @@ async function main() {
                     .option('include-source', { describe: "Also upload each capture's component source text (code.componentFile). Off by default: Scry never needs your code", type: 'boolean', default: false })
                     .option('repo-root', { describe: 'Repository root that code.componentFile paths are relative to (default: cwd)', type: 'string' })
                     .option('dry-run', { describe: 'Validate and zip only; print where the ZIP is', type: 'boolean', default: false })
+                    .option('allow-partial-bundle', { type: 'boolean', default: false, hidden: true })
                     .option('verbose', { describe: 'Enable verbose logging', type: 'boolean' });
             }, async (argv) => {
                 const config = loadConfig(argv);
-                const outcome = await runUploadBundle({ ...config, path: argv.path, includeSource: argv.includeSource, repoRoot: argv.repoRoot, source: argv.source, dryRun: argv.dryRun });
+                const outcome = await runUploadBundle({ ...config, path: argv.path, includeSource: argv.includeSource, repoRoot: argv.repoRoot, source: argv.source, dryRun: argv.dryRun, allowPartialBundle: argv.allowPartialBundle });
                 process.exitCode = outcome.exitCode;
             })
-            .command('capture <adapter>', 'Capture stories into a Scry Capture Format bundle (adapters: rn)', (yargs) => {
+            .command('capture <adapter>', 'Capture stories into a Scry Capture Format bundle (adapters: rn, web)', (yargs) => {
                 return yargs
-                    .positional('adapter', { describe: 'Capture adapter', choices: ['rn'] })
-                    .option('platform', { describe: 'ios (Simulator, macOS) or android (emulator)', choices: ['ios', 'android'], demandOption: true })
+                    .positional('adapter', { describe: 'Capture adapter', choices: ['rn', 'web'] })
+                    .option('platform', { describe: 'rn: ios (Simulator, macOS) or android (emulator). Required for rn', choices: ['ios', 'android'] })
                     .option('device', { describe: 'Simulator name (e.g. "iPhone 16") or AVD name / adb serial', type: 'string' })
                     .option('app', { describe: 'Built app to install first (.app for iOS, .apk for Android)', type: 'string' })
                     .option('app-id', { describe: 'Bundle id / package (default: from app.json)', type: 'string' })
                     .option('open-url', { describe: 'Deep link to open after launch, e.g. exp://127.0.0.1:8081 for Expo Go (with --app-id host.exp.Exponent) or a dev client URL', type: 'string' })
                     .option('build', { describe: 'Build and install the app with `expo run:<platform>` when it is not installed', type: 'boolean', default: false })
-                    .option('project-dir', { describe: 'React Native project directory (default: cwd)', type: 'string' })
+                    .option('project-dir', { describe: 'Project directory (default: cwd)', type: 'string' })
                     .option('out', { describe: 'Bundle output directory (default: <project>/.scry/capture)', type: 'string' })
-                    .option('stories', { describe: 'Comma-separated story ids to capture (default: all)', type: 'string' })
+                    .option('stories', { describe: 'Comma-separated story ids to capture (default: all). web: writes images and a report, not an upload bundle', type: 'string' })
                     .option('metro', { describe: 'Start Metro with STORYBOOK_ENABLED=true when the Storybook channel is not already up', type: 'boolean', default: true })
                     .option('ws-port', { describe: 'Storybook channel port', type: 'number', default: 7007 })
                     .option('settle-timeout', { describe: 'Per-story budget in ms to render and settle (two identical frames)', type: 'number', default: 10000 })
                     .option('safe-area-inset', { describe: 'iOS: top unsafe-area height in points used to flag captures whose story root starts inside it (default: from the simulator model). Flagged captures get x-scry.captureWarnings ["overlaps_top_unsafe_area"]; wrap your stories in a SafeAreaView decorator', type: 'number' })
                     .option('structure', { describe: 'Write an rn-fiber structure tree per story when the app exposes one', type: 'boolean', default: true })
-                    .option('verbose', { describe: 'Enable verbose logging', type: 'boolean' });
+                    .option('config-dir', { describe: 'web: Storybook config directory (default: .storybook)', type: 'string' })
+                    .option('workers', { describe: 'web: browser pages capturing at once (default: the CPU cores this process may use, at most 4)', type: 'number' })
+                    .option('max-dropped', { describe: 'web: exit 1 when more than this many stories fail to capture', type: 'number', default: 0 })
+                    .option('retries', { describe: 'web: extra tries, on a fresh page, for a story that fails', type: 'number', default: 1 })
+                    .option('story-timeout', { describe: 'web: per-story budget in ms to render and finish its play function', type: 'number', default: 15000 })
+                    .option('scale', { describe: 'web: device scale factor of the images, above 0 and at most 4', type: 'number', default: 1 })
+                    .option('viewport', { describe: 'web: browser viewport WIDTHxHEIGHT', type: 'string', default: '1280x720' })
+                    .option('fixed-time', { describe: 'web: the instant the page clock is pinned to (ISO 8601), or "off" (default: 2025-01-01T12:00:00Z)', type: 'string' })
+                    .option('changed-since', { describe: 'web: capture only the stories affected by changes since this git ref. Writes images and a report, never an upload bundle', type: 'string' })
+                    .option('list', { describe: 'web: print the story ids (with --changed-since: the affected story files) one per line and capture nothing', type: 'boolean', default: false })
+                    .option('list-ids', { describe: 'web: with --changed-since, print the affected story ids instead of story files', type: 'boolean', default: false })
+                    .option('report', { describe: 'web: where to write the run report JSON (default: next to the bundle, capture-report.json)', type: 'string' })
+                    .option('allow-partial-bundle', { type: 'boolean', default: false, hidden: true })
+                    .option('verbose', { describe: 'Enable verbose logging', type: 'boolean' })
+                    .check((argv) => {
+                        if (argv.adapter === 'rn' && !argv.platform) throw new Error('Missing required argument: platform');
+                        return true;
+                    });
             }, async (argv) => {
+                if (argv.adapter === 'web') {
+                    const { runCaptureWeb } = require('../lib/capture/web/index.js');
+                    const logger = createLogger(argv);
+                    let exitCode = 1;
+                    try {
+                        const outcome = await runCaptureWeb(argv, { logger, toolVersion: DEPLOYER_VERSION, gitContext: resolveBuildGitContext() });
+                        exitCode = outcome.exitCode;
+                    } catch (error) {
+                        process.stderr.write(`capture web failed: ${error.message}\n`);
+                        if (argv.verbose && error.stack) process.stderr.write(`${error.stack}\n`);
+                    }
+                    // Storybook's presets and the dev server can leave handles open: end the process once the output is flushed.
+                    process.exitCode = exitCode;
+                    process.stdout.write('', () => process.stderr.write('', () => process.exit(exitCode)));
+                    return;
+                }
                 const { runCaptureRn } = require('../lib/capture/rn.js');
                 const logger = createLogger(argv);
                 try {

@@ -1,0 +1,17 @@
+{
+  "name": "scry-capture-web-fixture",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Tiny React + Vite + Storybook project for the `scry-deployer capture web` integration test. Installed by hand (npm install here); never part of scry-node's own dependencies.",
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@storybook/react-vite": "10.0.7",
+    "playwright": "1.55.0",
+    "storybook": "10.0.7",
+    "vite": "7.1.6"
+  }
+}
