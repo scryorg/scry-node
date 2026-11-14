@@ -33,12 +33,12 @@ export { Hidden, Renamed as Public };
 describe('scanStoryFile', () => {
     const scan = scanStoryFile(SOURCE);
 
-    test('finds the line of each story export', () => {
-        expect(scan.exports.Primary).toBe(17);
-        expect(scan.exports.WithCard).toBe(19);
-        expect(scan.exports.Legacy).toBe(22);
-        expect(scan.exports.Hidden).toBe(23);
-        expect(scan.exports.Public).toBe(24);
+    test('finds the line of each story export (an export list points at the declaration)', () => {
+        expect(scan.exports.Primary).toBe(16);
+        expect(scan.exports.WithCard).toBe(18);
+        expect(scan.exports.Legacy).toBe(21);
+        expect(scan.exports.Hidden).toBe(22);
+        expect(scan.exports.Public).toBe(23);
         expect(scan.exports.Commented).toBeUndefined();
     });
 

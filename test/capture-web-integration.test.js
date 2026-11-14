@@ -248,6 +248,7 @@ maybe('capture web on the fixture project', () => {
     describe('--changed-since (in a throwaway git repository)', () => {
         let repo;
         const git = (...args) => {
+            // eslint-disable-next-line sonarjs/no-os-command-from-path -- a test, git is found on PATH
             const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: repo, encoding: 'utf8' });
             if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
             return r.stdout;
