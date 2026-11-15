@@ -61,7 +61,7 @@ Visit the [Scry Dashboard](https://dashboard.scrymore.com) and:
 ### 2. Run the setup command
 
 ```bash
-npx @scrymore/scry-deployer init --projectId YOUR_PROJECT_ID --apiKey YOUR_API_KEY
+npx @scrymore/scry-deployer init --project-id YOUR_PROJECT_ID --api-key YOUR_API_KEY
 ```
 
 **That's it!** 🎉
@@ -125,10 +125,10 @@ Requires Node.js 20.9 or newer (Node 18 is end of life; use `@scrymore/scry-depl
 
 ```bash
 # From npm (recommended)
-npx @scrymore/scry-deployer init --projectId xxx --apiKey yyy
+npx @scrymore/scry-deployer init --project-id xxx --api-key yyy
 
 # From GitHub (latest from main branch)
-npx github:scryorg/scry-node init --projectId xxx --apiKey yyy
+npx github:scryorg/scry-node init --project-id xxx --api-key yyy
 ```
 
 ### Installing as a Dependency
@@ -151,10 +151,10 @@ After installation, you can run commands using:
 
 ```bash
 # Using the scry-deployer binary
-npm exec -- scry-deployer init --projectId xxx --apiKey yyy
+npm exec -- scry-deployer init --project-id xxx --api-key yyy
 
 # Using the scry alias
-npx scry init --projectId xxx --apiKey yyy
+npx scry init --project-id xxx --api-key yyy
 
 # Using the storybook-deploy alias (for deploy commands)
 npx storybook-deploy --dir ./storybook-static
@@ -308,32 +308,54 @@ What the project needs:
 
 - Storybook 10 on a Vite framework with the React renderer (for example `@storybook/react-vite`).
   Any other Storybook version, builder or renderer stops with a message that says which.
-- `storybook`, `vite` and `playwright` installed in the project, and Playwright's Chromium
-  (`npx playwright install chromium`).
+- `storybook` and `vite` installed in the project. They are resolved from the project.
+- Playwright and its Chromium (`npx playwright install chromium`). A run by hand uses the
+  project's Playwright when it has one and otherwise the copy that comes with the deployer's
+  dependencies. The generated workflow needs `playwright` (or `@playwright/test`) in the
+  project, because it installs Chromium with the project's own Playwright.
 - Node 20.19 or newer.
 
 To run it in GitHub Actions, add `--capture web` to `init` (new project) or `update-workflows`
 (project already set up):
 
 ```bash
-npx @scrymore/scry-deployer init --projectId YOUR_PROJECT_ID --apiKey YOUR_API_KEY --capture web
+npx -y @scrymore/scry-deployer@^0.14.0 init --project-id YOUR_PROJECT_ID --api-key YOUR_API_KEY --capture web
 npx -y @scrymore/scry-deployer@^0.14.0 update-workflows --capture web
 ```
 
-The option first checks that the project qualifies. If it does not, the command prints the
-reason, writes nothing and exits 1. If it does:
+Keep the `@^0.14.0`. A deployer older than 0.14.0 (for example one npx has cached) does not
+know `--capture`, ignores it without an error and writes the two default workflows only.
 
-- `.github/workflows/scry-capture-web.yml` is written. On a push to the default branch it
-  captures every story and uploads the bundle.
+Run it at the repository root. The option first checks that the project qualifies. The check
+loads the project's Storybook and Vite config, as Storybook itself does; run it only in a
+repository you trust. Scry, GitHub and npm credentials are removed from the environment of
+that check. If the project does not qualify, the command prints the reason, writes nothing
+and exits 1. If it does:
+
+- `.github/workflows/scry-capture-web.yml` is written. On a push to `main` or `master` it
+  captures every story and uploads the bundle. If the default branch has another name, change
+  `branches` in the file, or the workflow never runs on a push. A run started by hand
+  (`workflow_dispatch`) on the default branch uploads; on any other branch it is a dry run
+  that validates the bundle and sends nothing.
 - `.github/workflows/deploy-storybook.yml` is written with `--no-analysis` in place of
   `--with-analysis`. It still builds and hosts Storybook and reports coverage. It no longer
-  captures the stories a second time.
+  takes the screenshots a second time. (Coverage with `--coverage-execute` still renders the
+  stories to run them.)
 - `.github/workflows/deploy-pr-preview.yml` is the same as without the option. Pull requests
   keep their preview, their comment and their screenshots.
 
-Pass `--config-dir <dir>` when the Storybook config is not in `.storybook`. The Storybook
-project must be at the repository root. To go back, run `update-workflows` without the option
-and delete `scry-capture-web.yml`.
+Pass `--config-dir <dir>` when the Storybook config is not in `.storybook`.
+
+Limit in this version: the Storybook project must be at the repository root. Run from a
+subfolder of the repository (a monorepo package), the option stops and writes nothing. For
+such a project, copy `templates/workflows/scry-capture-web.yml` by hand and add
+`working-directory`.
+
+The workflow installs the project with its own package manager and lockfile (npm, pnpm, yarn
+or bun). For pnpm it uses the version in `packageManager` in `package.json` when there is
+one; otherwise pnpm 10, or pnpm 8 when the lockfile is older than version 9.
+
+To go back, run `update-workflows` without the option and delete `scry-capture-web.yml`.
 
 Flags, per-story settings, the report, limits and CI details are in
 [docs/capture-web.md](docs/capture-web.md).
@@ -1189,7 +1211,7 @@ gh auth login
 
 Or skip GitHub CLI setup and set variables manually:
 ```bash
-npx @scrymore/scry-deployer init --projectId xxx --apiKey yyy --skip-gh-setup
+npx @scrymore/scry-deployer init --project-id xxx --api-key yyy --skip-gh-setup
 ```
 
 Then manually add variables in GitHub Settings → Secrets and variables → Actions.

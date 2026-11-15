@@ -11,7 +11,7 @@ const path = require('path');
 
 const CLI = path.join(__dirname, '..', 'bin', 'cli.js');
 const templates = require('../lib/templates.js');
-const { checkCaptureWebProject, checkCaptureWebProjectIsolated } = require('../lib/capture/web/qualify.js');
+const { checkCaptureWebProject, checkCaptureWebProjectIsolated, checkEnvironment, explainPresetFailure } = require('../lib/capture/web/qualify.js');
 
 const MAIN = '.github/workflows/deploy-storybook.yml';
 const PR = '.github/workflows/deploy-pr-preview.yml';
@@ -80,6 +80,72 @@ describe('the qualify check (lib/capture/web/qualify.js)', () => {
     expect(process.env.STORYBOOK_DISABLE_TELEMETRY).toBe(env.STORYBOOK_DISABLE_TELEMETRY);
   });
 
+  test('the check\'s child process gets no credentials', () => {
+    const env = {
+      PATH: '/usr/bin', HOME: '/home/x', NODE_ENV: 'test', MY_PROJECT_TOKEN: 'kept: the project\'s own',
+      SCRY_PROJECT_ID: 'proj', SCRY_API_URL: 'https://api', STORYBOOK_DEPLOYER_PROJECT: 'proj', SCRY_TELEMETRY: '0',
+      SCRY_API_KEY: 'x', STORYBOOK_DEPLOYER_API_KEY: 'x', SCRY_UPLOAD_TOKEN: 'x', STORYBOOK_DEPLOYER_SECRET: 'x', scry_password: 'x',
+      GITHUB_TOKEN: 'x', GH_TOKEN: 'x', GH_ENTERPRISE_TOKEN: 'x', GITHUB_ENTERPRISE_TOKEN: 'x', NPM_TOKEN: 'x', NODE_AUTH_TOKEN: 'x',
+      npm_config__authToken: 'x', 'NPM_CONFIG_//registry.npmjs.org/:_authToken': 'x',
+    };
+    const kept = ['PATH', 'HOME', 'NODE_ENV', 'MY_PROJECT_TOKEN', 'SCRY_PROJECT_ID', 'SCRY_API_URL', 'STORYBOOK_DEPLOYER_PROJECT', 'SCRY_TELEMETRY'];
+    expect(Object.keys(checkEnvironment(env)).sort()).toEqual([...kept].sort());
+
+    // And that is the environment the child is started with.
+    let seen;
+    const fakeSpawn = (_node, _args, options) => {
+      seen = options;
+      return { stdout: '\nSCRY_CAPTURE_WEB_CHECK={"ok":true,"info":{}}\n', stderr: '', status: 0 };
+    };
+    const result = checkCaptureWebProjectIsolated({ projectDir: dir, configDir: path.join(dir, '.storybook') }, { spawnSync: fakeSpawn, env });
+    expect(result.ok).toBe(true);
+    expect(Object.keys(seen.env).sort()).toEqual([...kept].sort());
+    expect(seen.cwd).toBe(dir);
+  });
+
+  test('a real child does not see the credentials of the process that started it', () => {
+    write('.storybook/main.js', 'export default {};\n');
+    write('node_modules/storybook/package.json', JSON.stringify({ name: 'storybook', version: '10.0.0', exports: { './internal/core-server': './leak.js', './internal/common': './leak.js' } }));
+    // Stands in for project code: it reports what it can read from the environment.
+    write('node_modules/storybook/leak.js', 'throw new Error("env:" + ["SCRY_API_KEY", "STORYBOOK_DEPLOYER_API_KEY", "GITHUB_TOKEN", "NPM_TOKEN", "SCRY_PROJECT_ID"].map((n) => n + "=" + (process.env[n] || "unset")).join(","));\n');
+    const env = { ...process.env, SCRY_API_KEY: 'leak-1', STORYBOOK_DEPLOYER_API_KEY: 'leak-2', GITHUB_TOKEN: 'leak-3', NPM_TOKEN: 'leak-4', SCRY_PROJECT_ID: 'proj-visible' };
+    const result = checkCaptureWebProjectIsolated({ projectDir: dir, configDir: path.join(dir, '.storybook') }, { env });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('SCRY_API_KEY=unset,STORYBOOK_DEPLOYER_API_KEY=unset,GITHUB_TOKEN=unset,NPM_TOKEN=unset,SCRY_PROJECT_ID=proj-visible');
+    expect(result.reason).not.toMatch(/leak-\d/);
+  });
+
+  describe('Storybook\'s "failed to load preset" becomes the plain reason', () => {
+    const raw = (name) => new Error(`Storybook failed to load the following preset: ${name}/preset.\n\nPlease check whether your setup is correct.\n\nError [ERR_MODULE_NOT_FOUND]: Cannot find package '${name}' imported from /x/chunk.js\n    at packageResolve (node:internal)\n`);
+    const explain = (name) => explainPresetFailure(raw(name), { projectDir: dir, configDir: path.join(dir, '.storybook') }).message;
+
+    test('a webpack framework that is not installed: needs a Vite framework', () => {
+      write('.storybook/main.ts', "export default { stories: [], framework: { name: '@storybook/react-webpack5', options: {} } };\n");
+      const message = explain('@storybook/react-webpack5');
+      expect(message).toMatch(/^capture web needs a Vite-based Storybook framework \(for example @storybook\/react-vite\); this project's Storybook config names "@storybook\/react-webpack5", which is also not installed in /);
+      // Storybook's own error is kept as the detail, without the stack.
+      expect(message).toContain('Detail from Storybook: Storybook failed to load the following preset: @storybook/react-webpack5/preset. Error [ERR_MODULE_NOT_FOUND]: Cannot find package');
+      expect(message).not.toContain('packageResolve');
+    });
+
+    test('a Vite framework that is not installed: install the dependencies', () => {
+      write('.storybook/main.js', "export default { framework: '@storybook/react-vite' };\n");
+      const message = explain('@storybook/react-vite');
+      expect(message).toMatch(/^The Storybook config names "@storybook\/react-vite", which is not installed in /);
+      expect(message).not.toMatch(/needs a Vite-based/);
+    });
+
+    test('an addon that is not installed is not called a framework problem', () => {
+      write('.storybook/main.js', "export default { addons: ['@storybook/addon-docs'], framework: '@storybook/react-vite' };\n");
+      expect(explain('@storybook/addon-docs')).toMatch(/^The Storybook config names "@storybook\/addon-docs", which is not installed in /);
+    });
+
+    test('any other error is returned as it is', () => {
+      const other = new Error('boom');
+      expect(explainPresetFailure(other, { projectDir: dir, configDir: dir })).toBe(other);
+    });
+  });
+
   test('a Storybook 10 project with no Playwright of its own does not qualify for the CI workflow', async () => {
     const { requireProjectPlaywright } = require('../lib/capture/web/qualify.js');
     expect(() => requireProjectPlaywright(dir)).toThrow(/needs "playwright" installed in/);
@@ -134,7 +200,39 @@ describe('scry-deployer update-workflows --capture web', () => {
       expect(r.stdout).toContain('--capture');
       expect(r.stdout).toContain('scry-capture-web.yml');
       expect(r.stdout).toContain('--config-dir');
+      // The check runs project code: the help says so. (yargs wraps the text.)
+      expect(r.stdout.replace(/\s+/g, ' ')).toContain('run it only in a repository you trust');
     }
+  });
+
+  test('from a subfolder it stops, names the repository-root limit and writes nothing', () => {
+    write('apps/web/package.json', '{}');
+    write('apps/web/.storybook/main.js', 'export default {};\n');
+    execSync('git add -A && git commit -qm sub', { cwd: dir, stdio: 'pipe' });
+    for (const args of [['update-workflows', '--capture', 'web'], ['init', '--project-id', 'p', '--api-key', 'test-key-placeholder-not-a-credential', '--skip-gh-setup', '--capture', 'web']]) {
+      const r = spawnSync(process.execPath, [CLI, ...args], { cwd: path.join(dir, 'apps/web'), encoding: 'utf8', env: { PATH: process.env.PATH, HOME: dir, SCRY_TELEMETRY: '0' } });
+      expect(r.status).toBe(1);
+      const out = r.stdout + r.stderr;
+      expect(out).toContain('run it from the repository root');
+      expect(out).toContain(`Repository root:  ${dir}`);
+      expect(out).toContain('the Storybook project must be at the repository root');
+      expect(out).toContain('Nothing was written.');
+      expect(exists('apps/web/.github')).toBe(false);
+      expect(exists('apps/web/.storybook-deployer.json')).toBe(false);
+      expect(read(MAIN)).toBe(STALE);
+      expect(status()).toBe('');
+    }
+  });
+
+  test('the repository-root check comes before any project code is loaded', async () => {
+    const { resolveCaptureWeb } = require('../lib/update-workflows.js');
+    process.chdir(dir);
+    const calls = [];
+    const check = (input) => { calls.push(input); return { ok: true, info: QUALIFIES }; };
+    const logger = { error() {}, info() {}, success() {}, debug() {} };
+    expect(() => resolveCaptureWeb({ capture: 'web' }, { checkCaptureWebProject: check, logger, gitTopLevel: () => path.dirname(dir) })).toThrow(/not at the repository root/);
+    expect(() => resolveCaptureWeb({ capture: 'web' }, { checkCaptureWebProject: check, logger, gitTopLevel: () => null })).toThrow(/not a git repository/);
+    expect(calls).toEqual([]);
   });
 
   describe('on a project that qualifies', () => {
@@ -170,6 +268,46 @@ describe('scry-deployer update-workflows --capture web', () => {
       expect(out).toContain('Storybook 10.0.7');
       expect(out).toContain('--no-analysis');
       expect(out).toContain('@scrymore/scry-deployer@^0.14.0');
+    });
+
+    test('pnpm comes from "packageManager" when the project names one, else from the lockfile format', async () => {
+      // Seeded project: version 9 lockfile, no packageManager field.
+      await runUpdateWorkflows({ capture: 'web' }, { checkCaptureWebProject: qualifies() });
+      expect(read(CAPTURE)).toMatch(/uses: pnpm\/action-setup@v4\n {8}with:\n.*\n {10}version: 10\n/);
+      // The deploy workflows keep their own pnpm step.
+      expect(read(MAIN)).toMatch(/uses: pnpm\/action-setup@v2\n {8}with:\n {10}version: 8\n/);
+
+      write('package.json', JSON.stringify({ packageManager: 'pnpm@9.15.4', scripts: { 'build-storybook': 'storybook build' } }));
+      await runUpdateWorkflows({ capture: 'web' }, { checkCaptureWebProject: qualifies() });
+      expect(read(CAPTURE)).toContain('uses: pnpm/action-setup@v4\n      - name: Setup Node.js');
+      expect(read(CAPTURE)).not.toMatch(/^ {10}version:/m);
+
+      write('package.json', JSON.stringify({ scripts: {} }));
+      write('pnpm-lock.yaml', "lockfileVersion: '6.0'\n");
+      await runUpdateWorkflows({ capture: 'web' }, { checkCaptureWebProject: qualifies() });
+      expect(read(CAPTURE)).toMatch(/^ {10}version: 8$/m);
+    });
+
+    test('yarn and bun projects install with their own package manager', async () => {
+      const { captureWebWorkflowArgs } = require('../lib/update-workflows.js');
+      fs.rmSync(path.join(dir, 'pnpm-lock.yaml'));
+      write('yarn.lock', '');
+      write('package.json', JSON.stringify({ packageManager: 'yarn@4.5.0' }));
+      await runUpdateWorkflows({ capture: 'web' }, { checkCaptureWebProject: qualifies() });
+      expect(read(CAPTURE)).toBe(templates.generateCaptureWebWorkflow('yarn', { corepack: true }));
+      expect(read(CAPTURE)).toContain('run: corepack enable');
+      expect(read(CAPTURE)).toContain('run: yarn install');
+      expect(captureWebWorkflowArgs('yarn', undefined, dir)[1].corepack).toBe(true);
+      write('package.json', JSON.stringify({ packageManager: 'yarn@1.22.22' }));
+      expect(captureWebWorkflowArgs('yarn', undefined, dir)[1].corepack).toBe(false);
+
+      // Bun's text lockfile (Bun 1.2+): the deploy workflows' detection does not know it.
+      fs.rmSync(path.join(dir, 'yarn.lock'));
+      write('bun.lock', '{}');
+      write('package.json', JSON.stringify({}));
+      expect(captureWebWorkflowArgs('npm', undefined, dir)[0]).toBe('bun');
+      write('package-lock.json', '{}');
+      expect(captureWebWorkflowArgs('npm', undefined, dir)[0]).toBe('npm');
     });
 
     test('--config-dir is checked and written into the workflow', async () => {
@@ -210,7 +348,7 @@ describe('scry-deployer update-workflows --capture web', () => {
       expect(exists(CAPTURE)).toBe(true);
       const out = lines.join('\n');
       expect(out).toContain(CAPTURE);
-      expect(out).toMatch(/captured twice|capture twice/);
+      expect(out).toMatch(/screenshots taken twice/);
     });
 
     test('a hand-written scry-capture-web.yml is not Scry\'s to warn about', async () => {
@@ -237,6 +375,25 @@ describe('scry-deployer init --capture web', () => {
     expect(read(MAIN)).toBe(STALE);
     expect(exists(PR)).toBe(false);
     expect(exists(CAPTURE)).toBe(false);
+    expect(status()).toBe('');
+  });
+
+  test('the project is checked before the credentials: a project that does not qualify hears that first', async () => {
+    process.chdir(dir);
+    const lines = [];
+    jest.spyOn(console, 'log').mockImplementation((...a) => lines.push(a.join(' ')));
+    jest.spyOn(console, 'error').mockImplementation((...a) => lines.push(a.join(' ')));
+    try {
+      // No project id and no key: the credentials step would refuse, but it is not reached.
+      jest.spyOn(process, 'exit').mockImplementation((code) => { throw new Error(`exit ${code}`); });
+      await expect(init.runInit({ capture: 'web' }, { checkCaptureWebProject: () => ({ ok: false, reason: 'Storybook 9.1.2 is not supported' }) })).rejects.toThrow('exit 1');
+    } finally {
+      jest.restoreAllMocks();
+    }
+    const out = lines.join('\n');
+    expect(out).toContain('Storybook 9.1.2 is not supported');
+    expect(out).not.toMatch(/Validating credentials/);
+    expect(exists('.storybook-deployer.json')).toBe(false);
     expect(status()).toBe('');
   });
 

@@ -1062,7 +1062,7 @@ async function main() {
                         alias: 'skipGhSetup'
                     })
                     .option('capture', {
-                        describe: 'web: also write .github/workflows/scry-capture-web.yml (build-free capture: Storybook 10, a Vite framework, React, Playwright in the project) and stop deploy-storybook.yml capturing the stories a second time. Stops and writes nothing when the project does not qualify',
+                        describe: 'web: also write .github/workflows/scry-capture-web.yml (build-free capture: Storybook 10, a Vite framework, React, Playwright in the project) and stop deploy-storybook.yml taking the screenshots a second time. Run it at the repository root. Stops and writes nothing when the project does not qualify. The check loads the project\'s Storybook and Vite config, as Storybook itself does; run it only in a repository you trust',
                         choices: ['web'],
                     })
                     .option('config-dir', {
@@ -1108,7 +1108,7 @@ async function main() {
                         default: false,
                     })
                     .option('capture', {
-                        describe: 'web: also write .github/workflows/scry-capture-web.yml (build-free capture: Storybook 10, a Vite framework, React, Playwright in the project) and stop deploy-storybook.yml capturing the stories a second time. Stops and writes nothing when the project does not qualify',
+                        describe: 'web: also write .github/workflows/scry-capture-web.yml (build-free capture: Storybook 10, a Vite framework, React, Playwright in the project) and stop deploy-storybook.yml taking the screenshots a second time. Run it at the repository root. Stops and writes nothing when the project does not qualify. The check loads the project\'s Storybook and Vite config, as Storybook itself does; run it only in a repository you trust',
                         choices: ['web'],
                     })
                     .option('config-dir', {

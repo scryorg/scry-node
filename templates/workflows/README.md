@@ -41,16 +41,22 @@ For a project on Storybook 10 with a Vite framework, the React renderer and
 Playwright installed. The commands check this first and write nothing when the
 project does not qualify.
 
-- `scry-capture-web.yml` is added. On a push to the default branch it runs
+- `scry-capture-web.yml` is added. On a push to `main` or `master` it runs
   `scry-deployer capture web` (no Storybook build) and then
   `scry-deployer upload`. It runs on `ubuntu-24.04`, installs
   `@scrymore/scry-deployer@^0.14.0` from npm into `$RUNNER_TEMP/scry`, installs
   Chromium with the **project's own Playwright**, and stops after
-  `timeout-minutes: 30`. A manual run on another branch only validates the
-  bundle (`upload --dry-run`).
+  `timeout-minutes: 30`. A manual run on the default branch uploads; on
+  another branch it only validates the bundle (`upload --dry-run`).
+- The project is installed with its own package manager and lockfile. The copy
+  in this folder is the npm variant. For pnpm the version comes from
+  `packageManager` in `package.json`, else pnpm 10 (pnpm 8 for a lockfile
+  older than version 9); the two deploy workflows keep their pnpm 8 step.
+- The Storybook project must be at the repository root. The commands stop and
+  write nothing when run from a subfolder.
 - `deploy-storybook.yml` is written with `--no-analysis` in place of
   `--with-analysis`: it still hosts Storybook and reports coverage, and no
-  longer captures the stories a second time. The copy in this folder is the
+  longer takes the screenshots a second time. The copy in this folder is the
   default one, with `--with-analysis`.
 - `deploy-pr-preview.yml` is unchanged.
 - `--max-dropped` comes from the variable `SCRY_MAX_DROPPED` (default 0): one

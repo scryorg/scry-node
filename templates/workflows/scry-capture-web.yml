@@ -4,7 +4,10 @@
 #
 # Needs Storybook 10 on a Vite framework with the React renderer, and Playwright in the project.
 # deploy-storybook.yml still builds and hosts Storybook and reports coverage; it runs with
-# --no-analysis so the stories are captured once, here.
+# --no-analysis so the screenshots are taken once, here.
+#
+# It runs on a push to main or master. If the default branch has another name, change
+# "branches" below. The Storybook project must be at the repository root.
 
 name: Scry Capture (web)
 

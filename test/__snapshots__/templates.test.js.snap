@@ -7,7 +7,10 @@ exports[`--capture web workflows (build-free capture for any qualifying project)
 #
 # Needs Storybook 10 on a Vite framework with the React renderer, and Playwright in the project.
 # deploy-storybook.yml still builds and hosts Storybook and reports coverage; it runs with
-# --no-analysis so the stories are captured once, here.
+# --no-analysis so the screenshots are taken once, here.
+#
+# It runs on a push to main or master. If the default branch has another name, change
+# "branches" below. The Storybook project must be at the repository root.
 
 name: Scry Capture (web)
 
@@ -42,13 +45,13 @@ jobs:
           persist-credentials: false
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           # capture web needs Node 20.19 or newer; '20' resolves to the newest 20.x.
           node-version: '20'
-          cache: 'bun'
+
 
       - name: Install dependencies
         run: bun install
@@ -117,7 +120,10 @@ exports[`--capture web workflows (build-free capture for any qualifying project)
 #
 # Needs Storybook 10 on a Vite framework with the React renderer, and Playwright in the project.
 # deploy-storybook.yml still builds and hosts Storybook and reports coverage; it runs with
-# --no-analysis so the stories are captured once, here.
+# --no-analysis so the screenshots are taken once, here.
+#
+# It runs on a push to main or master. If the default branch has another name, change
+# "branches" below. The Storybook project must be at the repository root.
 
 name: Scry Capture (web)
 
@@ -225,7 +231,10 @@ exports[`--capture web workflows (build-free capture for any qualifying project)
 #
 # Needs Storybook 10 on a Vite framework with the React renderer, and Playwright in the project.
 # deploy-storybook.yml still builds and hosts Storybook and reports coverage; it runs with
-# --no-analysis so the stories are captured once, here.
+# --no-analysis so the screenshots are taken once, here.
+#
+# It runs on a push to main or master. If the default branch has another name, change
+# "branches" below. The Storybook project must be at the repository root.
 
 name: Scry Capture (web)
 
@@ -260,9 +269,10 @@ jobs:
           persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
-          version: 8
+          # No "packageManager" in package.json, so the version follows the lockfile's format.
+          version: 10
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -337,7 +347,10 @@ exports[`--capture web workflows (build-free capture for any qualifying project)
 #
 # Needs Storybook 10 on a Vite framework with the React renderer, and Playwright in the project.
 # deploy-storybook.yml still builds and hosts Storybook and reports coverage; it runs with
-# --no-analysis so the stories are captured once, here.
+# --no-analysis so the screenshots are taken once, here.
+#
+# It runs on a push to main or master. If the default branch has another name, change
+# "branches" below. The Storybook project must be at the repository root.
 
 name: Scry Capture (web)
 
