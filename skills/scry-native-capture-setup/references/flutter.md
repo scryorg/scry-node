@@ -33,6 +33,7 @@ same upload.
 | `scripts/capture.sh` | `assets/flutter/capture.sh`, verbatim |
 | `scripts/make-scf.mjs` | `assets/make-scf.mjs` (shared with the other paths), verbatim |
 | `scripts/screens.json` | `assets/flutter/screens.json`, then one entry per registry entry |
+| `.github/workflows/scry-capture.yml` (optional, only if asked) | `assets/flutter/scry-capture-flutter.yml`, see CI below |
 
 Plus `integration_test` and `flutter_test` under `dev_dependencies` in `pubspec.yaml` (both are
 `sdk: flutter`: they ship inside the Flutter SDK, there is no pub.dev package and no version to pin) and
@@ -85,6 +86,29 @@ folder is common): merge into it, and keep the user's existing tests untouched.
    banner, no loading spinner, no permission dialog, no broken-image icon. A valid bundle can hold bad images.
 9. **Hand the upload to the user; do not run it**, exactly as in SKILL.md (`SCRY_PROJECT_ID` and `SCRY_API_KEY`
    exported in their own shell, then `npx @scrymore/scry-deployer upload .scry/capture`).
+
+## CI (optional)
+
+Only if the user asks. Copy `assets/flutter/scry-capture-flutter.yml` to `.github/workflows/scry-capture.yml`. It
+installs Flutter (pin the app's own version in the `flutter-version:` line), runs `bash scripts/capture.sh headless`
+on `ubuntu-latest`, checks the bundle with `npx @scrymore/scry-deployer@0.11.1 upload .scry/capture --dry-run`
+(no secret needed), then uploads it. The bundle is platform `other`, shown as "Flutter · Other".
+
+- One secret and one variable, set by the user in the repository settings, never by you: the secret
+  `SCRY_API_KEY` and the variable `SCRY_PROJECT_ID`. The key is read by the upload step only.
+- Without them (a fork, a fresh clone) the capture and the bundle check still run and the upload step ends green
+  with a notice saying it was skipped, so a missing key never turns the run red.
+- Push to the default branch only (`branches: [main]`: if the repo's default branch has another name, change that one
+  line; the upload step compares the pushed branch with the repo's default branch itself, so there is no second place
+  to edit, and a push to a branch that is not the default branch uploads nothing and shows a notice). Never on
+  `pull_request` or `pull_request_target`: a pull request, above all one from a fork, must never run in a job that
+  can read the key. No `workflow_dispatch`, no `schedule`, no self-hosted runner, `permissions: contents: read`,
+  checkout with `persist-credentials: false`, every action pinned to a full commit SHA, the deployer pinned.
+- It ships no emulator or simulator job. A device capture on a hosted runner needs an Android emulator action or a
+  macOS runner with a booted simulator, a much slower run that has not been tried here: use `capture.sh android` /
+  `ios` by hand, or add that job yourself and keep the guards above.
+- Status: checked with `actionlint`, the sample's workflow guards and the same steps run locally. It has not run
+  on GitHub Actions from this skill; say so.
 
 ## Fonts (headless)
 
