@@ -882,7 +882,7 @@ async function main() {
                     .option('verbose', { describe: 'Enable verbose logging', type: 'boolean' });
             }, async (argv) => {
                 const config = loadConfig(argv);
-                const outcome = await runUploadBundle({ validate: argv.validate, ...config, path: argv.path, includeSource: argv.includeSource, repoRoot: argv.repoRoot, source: argv.source, dryRun: argv.dryRun, allowPartialBundle: argv.allowPartialBundle });
+                const outcome = await runUploadBundle({ ...config, validate: argv.validate, path: argv.path, includeSource: argv.includeSource, repoRoot: argv.repoRoot, source: argv.source, dryRun: argv.dryRun, allowPartialBundle: argv.allowPartialBundle });
                 process.exitCode = outcome.exitCode;
             })
             .command('capture <adapter>', 'Capture stories into a Scry Capture Format bundle (adapters: rn, web)', (yargs) => {

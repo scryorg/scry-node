@@ -124,6 +124,37 @@ describe('skip the second validation', () => {
     });
 });
 
+describe('bad records fall back to full validation', () => {
+    test('malformed JSON record', async () => {
+        const { bundle } = makeBundle();
+        fs.writeFileSync(recordPathFor(bundle), '{not json');
+        const l = logger();
+        const res = await runUploadBundle({ path: bundle, dryRun: true }, { logger: l });
+        expect(res.exitCode).toBe(0);
+        expect(skipped(l)).toBe(false);
+        expect(ranFull(l)).toBe(true);
+    });
+
+    test('unreadable record (a directory in its place)', async () => {
+        const { bundle } = makeBundle();
+        fs.mkdirSync(recordPathFor(bundle));
+        const l = logger();
+        const res = await runUploadBundle({ path: bundle, dryRun: true }, { logger: l });
+        expect(res.exitCode).toBe(0);
+        expect(skipped(l)).toBe(false);
+        expect(ranFull(l)).toBe(true);
+    });
+
+    test('resetOutDir removes an old record', () => {
+        const { resetOutDir } = require('../lib/capture/web/scf-writer.js');
+        const { bundle } = makeBundle();
+        writeCaptureRecord(bundle);
+        expect(fs.existsSync(recordPathFor(bundle))).toBe(true);
+        resetOutDir(bundle);
+        expect(fs.existsSync(recordPathFor(bundle))).toBe(false);
+    });
+});
+
 describe('zip members', () => {
     function methods(zipPath) {
         const buf = fs.readFileSync(zipPath);
