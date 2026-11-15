@@ -11,14 +11,26 @@ capability. Read only the reference for the path being configured.
 
 ## Choose the setup path
 
-- **Deploy or index this project's Storybook:** read
-  [project.md](references/project.md). This covers the CLI, CI, coverage, and
-  screenshots needed for component search.
-- **Capture stories without building Storybook, or move an existing Scry
-  project to that:** read [capture-web.md](references/capture-web.md). It
-  needs Storybook 10 on a Vite framework with React and deployer 0.14.0 or
-  later. In a new setup, offer it when the project qualifies; otherwise use
-  `project.md` and say which requirement was not met.
+- **Deploy or index this project's Storybook, for a project that does not
+  yet deploy to Scry:** first check whether the project qualifies for build-free capture: Storybook 10 on a Vite framework
+  with React, at the repository root (full list in
+  [capture-web.md](references/capture-web.md)).
+  - **It qualifies: build-free capture is the default.** Read
+    [capture-web.md](references/capture-web.md), run its deployer check, and
+    set the project up with `--capture web`. Do not ask first; tell the user
+    which path you chose and why, and that the Storybook-build path is there
+    if they prefer it. Use the Storybook-build path instead when the user asks
+    for it, or when the deployer check there fails.
+  - **It does not qualify:** read [project.md](references/project.md) (the
+    Storybook-build path: CLI, CI, coverage, and screenshots for component
+    search) and tell the user which requirement was not met.
+- **A project that already deploys to Scry** (a workflow runs the deployer,
+  or `.storybook-deployer.json` names a project): keep its current path. Fix
+  or change the Storybook-build setup with [project.md](references/project.md).
+  If it qualifies for build-free capture, tell the user and offer the move; do
+  not rewrite working CI that the user did not ask you to change.
+- **Move an existing Scry project to build-free capture, when the user asks:**
+  read [capture-web.md](references/capture-web.md).
 - **Connect an AI assistant to Scry:** read [mcp.md](references/mcp.md).
   An MCP-only request does not require installing the deployer or changing CI.
 - **Connect Figma to Storybook:** read [figma.md](references/figma.md).
@@ -53,8 +65,8 @@ such as `@scry/scry` and `@scry/storybook-deployer`; do not copy those names.
 Check the installed version and its help/source before relying on flags.
 `project.md`, `mcp.md` and `figma.md` were checked against published deployer
 **0.6.0** on 2026-09-12 and not re-checked since. `capture-web.md` was checked
-on 2026-11-15 against the deployer source that becomes **0.14.0**; the newest
-published version that day was 0.13.0, which does not have the command.
+against published deployer **0.14.0** on 2026-11-15, the first version with
+`capture web` and `--capture web`.
 
 ## Account and publication boundaries
 
