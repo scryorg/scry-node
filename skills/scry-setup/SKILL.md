@@ -14,6 +14,11 @@ capability. Read only the reference for the path being configured.
 - **Deploy or index this project's Storybook:** read
   [project.md](references/project.md). This covers the CLI, CI, coverage, and
   screenshots needed for component search.
+- **Capture stories without building Storybook, or move an existing Scry
+  project to that:** read [capture-web.md](references/capture-web.md). It
+  needs Storybook 10 on a Vite framework with React and deployer 0.14.0 or
+  later. In a new setup, offer it when the project qualifies; otherwise use
+  `project.md` and say which requirement was not met.
 - **Connect an AI assistant to Scry:** read [mcp.md](references/mcp.md).
   An MCP-only request does not require installing the deployer or changing CI.
 - **Connect Figma to Storybook:** read [figma.md](references/figma.md).
@@ -45,8 +50,11 @@ configuration and merge changes without duplicating workflows or MCP servers.
 
 The npm package is **`@scrymore/scry-deployer`**. Some Scry docs use older names
 such as `@scry/scry` and `@scry/storybook-deployer`; do not copy those names.
-Check the installed version and its help/source before relying on flags. The
-references were checked against published deployer **0.6.0** on 2026-09-12.
+Check the installed version and its help/source before relying on flags.
+`project.md`, `mcp.md` and `figma.md` were checked against published deployer
+**0.6.0** on 2026-09-12 and not re-checked since. `capture-web.md` was checked
+on 2026-11-15 against the deployer source that becomes **0.14.0**; the newest
+published version that day was 0.13.0, which does not have the command.
 
 ## Account and publication boundaries
 
