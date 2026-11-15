@@ -1,8 +1,8 @@
 # Build-free capture (capture web)
 
 This is the default path for a web Storybook that qualifies (below): it feeds
-Scry search without a Storybook build per push. Use it for a new setup, and to
-move an existing Scry project over.
+Scry search without a Storybook build per push. Use it for a new setup and, when
+the user asks for it, to move an existing Scry project over.
 `scry-deployer capture web` renders each story with the project's own Storybook,
 Vite and Playwright and writes a capture bundle; `scry-deployer upload` sends it.
 
@@ -100,11 +100,15 @@ npx --yes @scrymore/scry-deployer@^0.14.0 init \
   --project-id YOUR_PROJECT_ID --api-key "$SCRY_API_KEY" --capture web
 ```
 
-To prepare files without committing, set up the project as in `project.md`,
-then run `update-workflows --capture web` (below), which only writes the three
-workflow files.
+To prepare files without committing, do the local preparation in `project.md`
+(project ID, deployer dependency, secrets), then write the workflows with
+`update-workflows --capture web` (below), which only writes the three workflow
+files.
 
 ## Upgrade an existing Scry project
+
+Do this only when the user asked for the move. If you only noticed that the
+project qualifies, offer it and stop.
 
 1. **Detect the current path, and which workflow deploys.** The project is on
    the Storybook-build path when a workflow runs the deployer with
