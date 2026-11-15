@@ -289,6 +289,55 @@ decorators: [(Story) => <SafeAreaProvider><SafeAreaView edges={['top']}><Story /
 the table (or to be stricter); it does not move or crop anything. Requires the app's Scry probe, since the
 frame comes from it.
 
+### Capture Command (web, build-free)
+
+Capture every story of a web Storybook into an SCF bundle without building Storybook, then
+upload the bundle. It needs `@scrymore/scry-deployer` 0.14.0 or newer.
+
+```bash
+npx @scrymore/scry-deployer capture web            # writes .scry/capture and .scry/capture-report.json
+npx @scrymore/scry-deployer upload .scry/capture   # validate and upload the bundle
+```
+
+`capture web` starts the project's own Vite dev server, renders each story in headless Chromium
+and writes one image and one structure tree per story. The upload makes the stories searchable
+in Scry. It does not host a browsable Storybook and it does not produce a coverage report; the
+default deploy command still does both.
+
+What the project needs:
+
+- Storybook 10 on a Vite framework with the React renderer (for example `@storybook/react-vite`).
+  Any other Storybook version, builder or renderer stops with a message that says which.
+- `storybook`, `vite` and `playwright` installed in the project, and Playwright's Chromium
+  (`npx playwright install chromium`).
+- Node 20.19 or newer.
+
+To run it in GitHub Actions, add `--capture web` to `init` (new project) or `update-workflows`
+(project already set up):
+
+```bash
+npx @scrymore/scry-deployer init --projectId YOUR_PROJECT_ID --apiKey YOUR_API_KEY --capture web
+npx -y @scrymore/scry-deployer@^0.14.0 update-workflows --capture web
+```
+
+The option first checks that the project qualifies. If it does not, the command prints the
+reason, writes nothing and exits 1. If it does:
+
+- `.github/workflows/scry-capture-web.yml` is written. On a push to the default branch it
+  captures every story and uploads the bundle.
+- `.github/workflows/deploy-storybook.yml` is written with `--no-analysis` in place of
+  `--with-analysis`. It still builds and hosts Storybook and reports coverage. It no longer
+  captures the stories a second time.
+- `.github/workflows/deploy-pr-preview.yml` is the same as without the option. Pull requests
+  keep their preview, their comment and their screenshots.
+
+Pass `--config-dir <dir>` when the Storybook config is not in `.storybook`. The Storybook
+project must be at the repository root. To go back, run `update-workflows` without the option
+and delete `scry-capture-web.yml`.
+
+Flags, per-story settings, the report, limits and CI details are in
+[docs/capture-web.md](docs/capture-web.md).
+
 ### Options
 
 The CLI is configured through a combination of command-line options and environment variables. Command-line options always take precedence.
@@ -1180,6 +1229,9 @@ npx -y @scrymore/scry-deployer@^0.7.0 update-workflows --commit   # and commit t
 It detects your package manager from the lockfile and your Storybook build script from
 `package.json`, and overwrites `.github/workflows/deploy-storybook.yml` and
 `.github/workflows/deploy-pr-preview.yml`. Review the diff if you customised them.
+
+With `--capture web` (deployer 0.14.0 or newer) it also writes
+`.github/workflows/scry-capture-web.yml`; see "Capture Command (web, build-free)" above.
 
 ### Want to customize the generated workflows?
 

@@ -152,6 +152,65 @@ A run with `--changed-since` or `--stories` writes images, structure trees and t
 upload. Uploading a bundle that holds only some stories would make the rest look deleted.
 `scry-deployer upload` refuses a bundle whose `scf.json` is marked `"x-scry-partial": true`.
 
+## Set it up in CI
+
+`init` and `update-workflows` write a GitHub Actions workflow for it. Both need
+`@scrymore/scry-deployer` 0.14.0 or newer.
+
+```bash
+npx @scrymore/scry-deployer init --projectId YOUR_PROJECT_ID --apiKey YOUR_API_KEY --capture web   # new project
+npx -y @scrymore/scry-deployer@^0.14.0 update-workflows --capture web                              # existing project
+```
+
+Add `--config-dir <dir>` when the Storybook config is not in `.storybook`. The Storybook
+project must be at the repository root; for a project in a subfolder, copy the workflow from
+`templates/workflows/scry-capture-web.yml` and add `working-directory`.
+
+The command first checks the project: Storybook 10, a Vite framework, the React renderer, Vite,
+and Playwright installed in the project. If a check fails it prints which one, writes nothing
+and exits 1.
+
+What it writes:
+
+| File | What changes |
+| --- | --- |
+| `.github/workflows/scry-capture-web.yml` | New. Captures every story and uploads the bundle on a push to the default branch. |
+| `.github/workflows/deploy-storybook.yml` | `--with-analysis` becomes `--no-analysis`. It still builds and hosts Storybook and reports coverage. It no longer captures the stories. |
+| `.github/workflows/deploy-pr-preview.yml` | Nothing. Pull requests keep the preview, the comment and their screenshots. |
+
+Why two workflows stay: an uploaded bundle carries screenshots and structure for search. It has
+no browsable Storybook and no coverage report. The deploy workflow keeps those. Each push
+therefore creates two builds in Scry: the hosted one, which is not indexed, and the bundle,
+which is.
+
+What the capture workflow does:
+
+- Runs on `ubuntu-24.04`, not `ubuntu-latest`. The floating label moves to a new Ubuntu before
+  older Playwright versions have a Chromium build for it, and the browser install then fails.
+- Uses Node 20 (the newest 20.x, which is 20.19 or newer).
+- Installs the deployer from npm into `$RUNNER_TEMP/scry`, outside the checkout, with a floor
+  of `^0.14.0`.
+- Installs Chromium with the project's own Playwright (`playwright install --with-deps chromium`).
+- Runs `capture web`, keeps `capture-report.json` as a workflow artifact for 7 days, then runs
+  `upload`. The API key is only given to the upload step.
+- Stops after 30 minutes. On a 2-core GitHub runner a Storybook of 1,734 stories took about
+  10 minutes to capture and about 1.5 minutes to upload.
+- Can be started by hand (`workflow_dispatch`). A manual run on a branch other than the default
+  one validates the bundle with `upload --dry-run` and sends nothing.
+
+It reads the same repository settings as the deploy workflows: the secret `SCRY_API_KEY` and
+the variables `SCRY_API_URL` and `SCRY_PROJECT_ID`. One optional variable:
+
+- `SCRY_MAX_DROPPED`: stories allowed to fail capture before the run ends red. Default `0`.
+  A failed story is retried once before it counts. With `0`, one story that cannot be captured
+  fails the run and nothing is uploaded, so search keeps the last complete capture. Raise it
+  only for stories you know are flaky, and fix or skip those stories when you can: a story
+  missing from an uploaded bundle is missing from search for that build.
+
+To go back to the Storybook-build path: run `update-workflows` without `--capture web`, then
+delete `.github/workflows/scry-capture-web.yml`. If the file is left in place, the command
+warns that every push will be captured twice.
+
 ## Limits
 
 - React only. Vue, Svelte, Angular and web-components Storybooks are refused.

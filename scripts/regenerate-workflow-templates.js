@@ -5,12 +5,14 @@
 // before (ISSUES.md #50).
 const fs = require('fs');
 const path = require('path');
-const { generateMainWorkflow, generatePRWorkflow } = require('../lib/templates.js');
+const { generateMainWorkflow, generatePRWorkflow, generateCaptureWebWorkflow } = require('../lib/templates.js');
 
 const dir = path.join(__dirname, '..', 'templates', 'workflows');
 const files = {
   'deploy-storybook.yml': generateMainWorkflow('', '', 'npm', 'build-storybook'),
   'deploy-pr-preview.yml': generatePRWorkflow('', '', 'npm', 'build-storybook'),
+  // Written only by `init --capture web` / `update-workflows --capture web`.
+  'scry-capture-web.yml': generateCaptureWebWorkflow('npm'),
 };
 
 if (require.main === module) {
