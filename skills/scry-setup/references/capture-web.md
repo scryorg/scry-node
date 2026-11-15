@@ -1,13 +1,14 @@
 # Build-free capture (capture web)
 
-Use when a web Storybook should feed Scry search without a Storybook build per
-push, either in a new setup or to move an existing Scry project over.
+This is the default path for a web Storybook that qualifies (below): it feeds
+Scry search without a Storybook build per push. Use it for a new setup, and to
+move an existing Scry project over.
 `scry-deployer capture web` renders each story with the project's own Storybook,
 Vite and Playwright and writes a capture bundle; `scry-deployer upload` sends it.
 
-The command is in `@scrymore/scry-deployer` **0.14.0 and later**. This reference
-was written from the deployer source before 0.14.0 was published. Check what the
-user can actually install before using it (see "Check the deployer has it").
+The command is in `@scrymore/scry-deployer` **0.14.0 and later**, published on
+2026-11-15. A project pinned to an older deployer, or a registry mirror that
+lags, may not have it; check before using it (see "Check the deployer has it").
 
 ## Does the project qualify
 
@@ -55,10 +56,12 @@ npm view @scrymore/scry-deployer version
 ```
 
 The command exists when the help lists `web` as an adapter and the version is
-0.14.0 or later. If it is not there yet: tell the user build-free capture
-arrives in 0.14.0, leave the project on its current path, and stop. Do not
-install the deployer from a git URL or commit for a user, and do not write a
-workflow that does.
+0.14.0 or later. If it is not there (an old pin, a private registry or mirror
+that has not caught up): tell the user build-free capture needs deployer 0.14.0
+or later, and say what you saw. For a new setup, fall back to the
+Storybook-build path in [project.md](project.md); for an upgrade, leave the
+project on its current path and stop. Do not install the deployer from a git
+URL or commit for a user, and do not write a workflow that does.
 
 ## What it gives and what it does not
 
@@ -80,9 +83,14 @@ as it is.
 
 ## New setup
 
-When the project qualifies and the deployer has the command, offer build-free
-capture and say why (no Storybook build for search; the deploy workflow still
-hosts and reports coverage). Otherwise use [project.md](project.md).
+When the project qualifies and the deployer has the command, set it up with
+build-free capture. This is the default: do not ask which path the user wants.
+Tell them what you chose and why (no Storybook build for search; the deploy
+workflow still hosts and reports coverage), that each push creates two builds,
+and how to go back (run `update-workflows` without `--capture web` and delete
+`.github/workflows/scry-capture-web.yml`). Use the Storybook-build path in [project.md](project.md)
+when the project does not qualify, the deployer lacks the command, or the user
+asks for it.
 
 `init` accepts the option, with the same side effects described in `SKILL.md`
 (it commits and pushes):
