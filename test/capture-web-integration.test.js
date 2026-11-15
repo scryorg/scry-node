@@ -109,6 +109,11 @@ maybe('capture web on the fixture project', () => {
         expect(report).toBeDefined();
     });
 
+    test('leaves a capture record next to the folder that matches it, so upload can skip a second validation', () => {
+        const { checkCaptureRecord } = require('../lib/captureRecord.js');
+        expect(checkCaptureRecord(out)).toMatchObject({ match: true });
+    });
+
     test('counts are honest: 15 declared, 13 captured, 2 skipped with reasons', () => {
         expect(manifest.counts.declared).toBe(15);
         expect(manifest.counts.captured).toBe(13);

@@ -877,11 +877,12 @@ async function main() {
                     .option('include-source', { describe: "Also upload each capture's component source text (code.componentFile). Off by default: Scry never needs your code", type: 'boolean', default: false })
                     .option('repo-root', { describe: 'Repository root that code.componentFile paths are relative to (default: cwd)', type: 'string' })
                     .option('dry-run', { describe: 'Validate and zip only; print where the ZIP is', type: 'boolean', default: false })
+                    .option('validate', { describe: 'Always run the full validation, even when capture web already validated this folder', type: 'boolean', default: false })
                     .option('allow-partial-bundle', { type: 'boolean', default: false, hidden: true })
                     .option('verbose', { describe: 'Enable verbose logging', type: 'boolean' });
             }, async (argv) => {
                 const config = loadConfig(argv);
-                const outcome = await runUploadBundle({ ...config, path: argv.path, includeSource: argv.includeSource, repoRoot: argv.repoRoot, source: argv.source, dryRun: argv.dryRun, allowPartialBundle: argv.allowPartialBundle });
+                const outcome = await runUploadBundle({ ...config, validate: argv.validate, path: argv.path, includeSource: argv.includeSource, repoRoot: argv.repoRoot, source: argv.source, dryRun: argv.dryRun, allowPartialBundle: argv.allowPartialBundle });
                 process.exitCode = outcome.exitCode;
             })
             .command('capture <adapter>', 'Capture stories into a Scry Capture Format bundle (adapters: rn, web)', (yargs) => {
